@@ -194,12 +194,12 @@ def safe_ip_for_filename(ip: str) -> str:
 
 def temp_file_for_ip(ip: str) -> Path:
     safe_ip = safe_ip_for_filename(ip)
-    return OUT_DIR / f"tmp_modat_service_{safe_ip}_{today}.json"
+    return OUT_DIR / f"modat_service_{safe_ip}_{today}.json"
 
 
 def load_completed_ips_from_temp() -> set[str]:
     completed = set()
-    for f in OUT_DIR.glob(f"tmp_modat_service_*_{today}.json"):
+    for f in OUT_DIR.glob(f"modat_service_*_{today}.json"):
         try:
             data = json.loads(f.read_text(encoding="utf-8"))
             meta_ip = data.get("ip")

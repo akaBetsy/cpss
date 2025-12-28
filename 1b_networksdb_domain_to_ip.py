@@ -39,20 +39,12 @@ with input_file.open("r", encoding="utf-8") as f:
     domains = [line.strip() for line in f if line.strip()]
 
 # Already processed today detection
-processed = set()
-if log_file.exists():
-    with log_file.open("r", encoding="utf-8") as logf:
-        for line in logf.readlines():
-            if line.startswith("#") or not line.strip():
-                continue
-            parts = line.strip().split(",")
-            if len(parts) >= 4:
-                ts = parts[3].strip('"')
-                ts_day = ts[:10].replace("-", "")  # "2025-08-24T..." -> "20250824"
-                if ts_day == today:
-                    processed.add(parts[0])
+def domain_already_scanned(domain: str, out_dir: Path, date: str) -> bool:
+    safe = domain.replace("/", "_")
+    return (out_dir / f"networksdb_{safe}_{date}.json").exists()
 
-# === HELPER: NORMALIZE IP object for Elastic/Kibana parity with MODAT ===
+
+# === HELPER: NORMALIZE IP object for parity with MODAT ===
 def _normalize_ip(ip_info: Dict[str, Any]) -> Dict[str, Any]:
     ip = ip_info.get("ip")
     info = ip_info.get("ip_info", {}) or {}
@@ -83,8 +75,8 @@ with log_file.open("a", encoding="utf-8") as log:
         log.write("domain,status,results,timestamp\n")
 
     for domain in domains:
-        if domain in processed:
-            print(f"Skipping already processed domain for today: {domain}")
+        if domain_already_scanned(domain, STAGING_DIR, today):
+            print(f"[SKIP] {domain} already scanned (JSON exists in {STAGING_DIR})")
             continue
 
         print(f"Querying: {domain}")
@@ -162,7 +154,7 @@ with log_file.open("a", encoding="utf-8") as log:
             domain_data["ips"] = flat_ips
 
             # Save JSON output
-            output_file = base_output_dir / f"networksdb_{domain.replace('/', '_')}.json"
+            output_file = base_output_dir / f"networksdb_{domain.replace('/', '_')}_{today}.json"
             with output_file.open("w", encoding="utf-8") as outf:
                 json.dump(domain_data, outf, indent=2)
 
