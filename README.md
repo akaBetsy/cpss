@@ -15,11 +15,12 @@ Connected Physical Security systems in scope are;
 - Intrusion & Hold Alarm Systems (Alarm systems): Sensors and alarms that detect unauthorized access or breaches.
 
 Workflow:
-- 0_input_domains_from_PDF.py   Retrieve domains PDF in .\input folder and output to .\input\cpss_scan_domains_date.txt
+- 0_input_domains_from_PDF.py   Retrieves domains PDF in .\input folder and output to .\input\cpss_scan_domains_date.txt
 - 1a_modat_host_domain_to_ip.py Uses domains from most recent TXT from .\input to scan Modat Host API for "web.html, certs, domain" and outputs to .\staging\1a_modat_host_api\
 - 1b_networksdb_domain_to_ip.py Uses domains from most recent TXT from .\input to scan NetworksDB DNS, Org-Search and IP-info and outputs to .\staging\1b_networksdb_api\
 - 2_modat_service_api.py        Retrieves unique IPv4 addresses from .\staging\1a_modat_host_api\ and .\staging\1b_networksdb_api\ and outputs into .\staging\2_modat_service_api\_domain_to_ip_
   {yyyymmdd}.txt, then it asks to scan the Modat Service API on these unique IP-addresses and outputs to .\staging\2_modat_service_api
+- 3_process_json_to_csv.py      Retrieves all fields, excluding raw cert, from the IP JSON files in .\staging\2_modat_service_api, matches with domain names in .\staging\1a_modat_host_api\ and .\staging\1b_networksdb_api\ and output the data into a CSV in folder .\staging\3_prepare_analyses
 - 
 
 
