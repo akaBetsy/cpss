@@ -266,6 +266,22 @@ def main() -> int:
     print(f"Output list written to            : {OUT_TXT}")
     print("========================================\n")
 
+    # --- Write IPv4 statistics to staging/3_prepare_analyses/1_ipv4_statistics.txt ---
+    stats_path = Path("./staging/3_prepare_analyses/1_ipv4_statistics.txt")
+    stats_path.parent.mkdir(parents=True, exist_ok=True)
+
+    stats_content = (
+        "================ SUMMARY ================\n"
+        f"Unique IPv4s (combined)           : {len(all_ips)}\n"
+        f"Unique IPv4s from Modat host      : {len(modat_ips)}\n"
+        f"Unique IPv4s from NetworksDB      : {len(net_ips)}\n"
+        f"Extra IPv4s (NetworksDB vs host)  : {len(extra_net)}\n"
+        f"Output list written to            : {OUT_TXT}\n"
+        "========================================\n"
+    )
+
+    stats_path.write_text(stats_content, encoding="utf-8")
+
     ans = input("Continue and rescan these IPs against Modat SERVICE API? [y/N]: ").strip().lower()
     if ans != "y":
         print("[INFO] Stopped before Modat service rescan.")
