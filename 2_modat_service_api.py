@@ -1,11 +1,12 @@
 #!/usr/bin/env python3
 from __future__ import annotations
-
 import csv
 import json
 import time
 import ipaddress
 import requests
+import re
+from collections import defaultdict
 from pathlib import Path
 from datetime import datetime, timezone
 
@@ -38,6 +39,21 @@ SLEEP_AFTER_BATCH = 30
 BATCH_SIZE = 10
 
 
+# === RESTART / CONTINUE SCAN HELPERS ===
+def build_ip_file_index(out_dir: Path) -> dict[str, set[str]]:
+    idx: dict[str, set[str]] = defaultdict(set)
+    rx = re.compile(r"^(?:tmp_)?modat_service_(?P<safeip>.+)_(?P<date>\d{8})\.json$", re.IGNORECASE)
+
+    if not out_dir.exists():
+        return dict(idx)
+
+    for f in out_dir.glob("*.json"):
+        m = rx.match(f.name)
+        if not m:
+            continue
+        idx[m.group("safeip")].add(m.group("date"))
+
+    return dict(idx)
 
 # === IPV4 extraction helpers ===
 def normalize_ipv4(value) -> str | None:
@@ -84,7 +100,6 @@ def extract_ipv4s_from_networksdb_json(path: Path) -> set[str]:
                 ip = normalize_ipv4(e)
                 if ip:
                     out.add(ip)
-
     return out
 
 
@@ -128,11 +143,9 @@ def extract_ipv4s_from_modat_host_json(path: Path) -> set[str]:
     return out
 
 
-
 # === OUTPUT AND LOGGING ===
 def write_txt_ips(path: Path, ips: list[str]) -> None:
     path.write_text("\n".join(ips) + ("\n" if ips else ""), encoding="utf-8")
-
 
 def init_log() -> None:
     write_header = not LOG_FILE.exists() or LOG_FILE.stat().st_size == 0
@@ -141,11 +154,9 @@ def init_log() -> None:
         if write_header:
             w.writerow(["ip", "status", "results", "timestamp"])
 
-
 def log_row(ip: str, status: str, count: int) -> None:
     with LOG_FILE.open("a", newline="", encoding="utf-8") as f:
         csv.writer(f).writerow([ip, status, count, datetime.now(timezone.utc).isoformat()])
-
 
 
 # === Modat API helpers (service endpoint) ===
@@ -156,7 +167,6 @@ def load_api_key_or_fail() -> str:
     if not token:
         raise RuntimeError(f"Modat API key file is empty: '{API_KEY_FILE}'")
     return token
-
 
 def fetch_page(headers: dict, query: str, page: int) -> dict | None:
     payload = {"query": query, "page": page, "page_size": PAGE_SIZE}
@@ -176,12 +186,10 @@ def fetch_page(headers: dict, query: str, page: int) -> dict | None:
         break
     return None
 
-
 def extract_results(data: dict) -> list:
     if not isinstance(data, dict):
         return []
     return data.get("page", []) or data.get("results", [])
-
 
 def build_full_query_for_ip(ip: str) -> str:
     return f'ip = "{ip}"'
@@ -191,23 +199,39 @@ def build_full_query_for_ip(ip: str) -> str:
 def safe_ip_for_filename(ip: str) -> str:
     return ip.replace(":", "-").replace("/", "_")
 
-
 def temp_file_for_ip(ip: str) -> Path:
     safe_ip = safe_ip_for_filename(ip)
     return OUT_DIR / f"modat_service_{safe_ip}_{today}.json"
 
-
 def load_completed_ips_from_temp() -> set[str]:
     completed = set()
-    for f in OUT_DIR.glob(f"modat_service_*_{today}.json"):
-        try:
-            data = json.loads(f.read_text(encoding="utf-8"))
-            meta_ip = data.get("ip")
-            if meta_ip:
-                completed.add(str(meta_ip))
-        except Exception:
-            pass
+    patterns = [
+        f"modat_service_*_{today}.json",
+        f"tmp_modat_service_*_{today}.json",  # compat met andere service-scripts
+    ]
+    for pat in patterns:
+        for f in OUT_DIR.glob(pat):
+            try:
+                data = json.loads(f.read_text(encoding="utf-8"))
+                meta_ip = data.get("ip")
+                if meta_ip:
+                    completed.add(str(meta_ip).strip())
+            except Exception:
+                pass
     return completed
+
+# === PARSE IP FROM FILENAME ===
+def parse_ip_from_filename(filename: str) -> tuple[str | None, str | None]:
+    # Matcht: modat_service_<ip>_<YYYYMMDD>.json
+    if not filename.lower().startswith("modat_service_"):
+        return None, None
+    try:
+        core = filename[len("modat_service_"):]
+        ip, date = core.rsplit("_", 1)
+        date = date.replace(".json", "")
+        return ip.strip(), date.strip()
+    except ValueError:
+        return None, None
 
 
 # === MAIN ===
@@ -256,24 +280,53 @@ def main() -> int:
 
     init_log()
 
-    completed_ips = load_completed_ips_from_temp()
-    if completed_ips:
-        print(f"[INFO] Found {len(completed_ips)} IPs already completed (temp files present).")
+# === CONTINUE SCAN / RESCAN ===
+    files = [f.name for f in OUT_DIR.glob("*.json")]
+
+    index: dict[str, list[str]] = defaultdict(list)
+    for fname in files:
+        ip, date = parse_ip_from_filename(fname)
+        if ip and date:
+            index[ip].append(date)
+
+    ips_today = []
+    ips_old = []
+    ips_no_files = []
+
+    for ip in ips_from_txt:
+        dates = index.get(ip, [])
+        if not dates:
+            ips_no_files.append(ip)
+        elif today in dates:
+            ips_today.append(ip)
+        else:
+            ips_old.append(ip)
+
+    print("\n================ RESUME OVERVIEW ================")
+    print(f"IPs with NO existing files                : {len(ips_no_files)}")
+    print(f"IPs with files dated TODAY ({today})      : {len(ips_today)} → will be skipped")
+    print(f"IPs with files dated OTHER than {today}   : {len(ips_old)}")
+    print("=================================================\n")
+
+    rescan_old = False
+    if ips_old:
+        rescan_old = input(
+            f"{len(ips_old)} previously scanned IPs are not from today. Rescan these? [y/N]: "
+        ).strip().lower() == "y"
+
+    ips_to_scan = ips_no_files + (ips_old if rescan_old else [])
+
+    print(f"[INFO] Final IPs to scan this run: {len(ips_to_scan)}")
 
     scan_count = 0
 
-    for idx, ip in enumerate(ips_from_txt, start=1):
+    for idx, ip in enumerate(ips_to_scan, start=1):
         if scan_count > 0 and scan_count % BATCH_SIZE == 0:
             print(f"[INFO] Batch limit reached ({BATCH_SIZE}). Sleeping {SLEEP_AFTER_BATCH}s...")
             time.sleep(SLEEP_AFTER_BATCH)
 
-        if ip in completed_ips:
-            print(f"[SKIP] ({idx}/{len(ips_from_txt)}) IP already processed (temp exists): {ip}")
-            log_row(ip, "SKIP_EXISTS", 0)
-            continue
-
         print("\n" + "=" * 80)
-        print(f"[{idx}/{len(ips_from_txt)}] Fetching services for IP: {ip}")
+        print(f"[{idx}/{len(ips_to_scan)}] Fetching services for IP: {ip}")
         query = build_full_query_for_ip(ip)
         print(query)
         print("=" * 80)

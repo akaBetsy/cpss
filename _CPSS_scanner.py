@@ -5,12 +5,12 @@ CPSS Resilience Scanner - Orchestrator (Flow Runner)
 What this script does (v0):
 - Welcomes user + states prerequisites (Modat + NetworksDB API keys)
 - Determines input method:
-  - If a file exists in \input:
-      - PDF  -> run 0_input_domains_from_PDF.py (expects it to write a .txt into \input)
+  - If a file exists in input:
+      - PDF  -> run 0_input_domains_from_PDF.py (expects it to write a .txt into input)
       - TXT  -> use it directly
-      - Other -> try to extract domains and write a TXT to \input; if not possible, ask user to choose PDF/TXT/manual
-  - If no file in \input or user chooses manual:
-      - ask for a domain (popup) and write a TXT into \input
+      - Other -> try to extract domains and write a TXT to input; if not possible, ask user to choose PDF/TXT/manual
+  - If no file in input or user chooses manual:
+      - ask for a domain (popup) and write a TXT into input
 - Runs:
   - 1a_domain_to_ip_modat_host.py
   - 1b_networksdb_domain_to_ip.py
@@ -19,7 +19,7 @@ What this script does (v0):
 
 Assumptions (kept minimal):
 - All scripts are in the same folder as this orchestrator.
-- 0_input_domains_from_PDF.py writes a .txt into \input (or you can place your own .txt).
+- 0_input_domains_from_PDF.py writes a .txt into input (or you can place your own .txt).
 """
 
 from __future__ import annotations
@@ -247,7 +247,7 @@ def main() -> int:
     if input_file:
         print(f"[INFO] Found input file: {input_file.relative_to(BASE_DIR)}")
     else:
-        print("[INFO] No input file found in .\\input")
+        print("[INFO] No input file found in input")
 
     # If file exists, process by extension; otherwise manual
     if input_file:
@@ -266,8 +266,8 @@ def main() -> int:
             if not txt:
                 popup_info(
                     "No TXT produced",
-                    "PDF extraction finished, but no .txt file was found in .\\input.\n"
-                    "Please ensure 0_input_domains_from_PDF.py writes domains to a .txt in .\\input."
+                    """PDF extraction finished, but no .txt file was found in input.\n"""
+                    """Please ensure 0_input_domains_from_PDF.py writes domains to a .txt in input."""
                 )
                 return 2
 
@@ -293,7 +293,7 @@ def main() -> int:
                         return 2
                     run_script(SCRIPT_PDF)
                 elif method == "txt":
-                    popup_info("Action required", "Place a .txt domain list into .\\input and re-run the orchestrator.")
+                    popup_info("Action required", """Place a .txt domain list into input and re-run the orchestrator.""")
                     return 0
                 else:
                     # manual
@@ -350,7 +350,7 @@ def main() -> int:
     # Ask to continue with service scan
     cont = popup_yesno(
         "Continue?",
-        "1a and 1b finished.\n\nContinue with 2_modat_service_api.py.py (service scan)?"
+        """1a and 1b finished.\n\nContinue with 2_modat_service_api.py.py (service scan)?"""
     )
     if not cont:
         print("[INFO] Flow stopped by user before Step 2.")
