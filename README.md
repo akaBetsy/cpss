@@ -15,6 +15,7 @@ Connected Physical Security systems in scope are;
 - Intrusion & Hold Alarm Systems (Alarm systems): Sensors and alarms that detect unauthorized access or breaches.
 
 Workflow:
+- _CPSS_scanner.py is the workflow orchestrator
 - 0_input_domains_from_PDF.py   Retrieves domains PDF in .\input folder and output to .\input\cpss_scan_domains_date.txt
 - 1a_modat_host_domain_to_ip.py Uses domains from most recent TXT from .\input to scan Modat Host API for "web.html, certs, domain" and outputs to .\staging\1a_modat_host_api\
 - 1b_networksdb_domain_to_ip.py Uses domains from most recent TXT from .\input to scan NetworksDB DNS, Org-Search and IP-info and outputs to .\staging\1b_networksdb_api\
