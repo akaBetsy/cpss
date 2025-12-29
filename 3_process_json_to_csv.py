@@ -1,4 +1,38 @@
 #!/usr/bin/env python3
+"""
+CPSS - Prepare Analyses: Convert Modat Service JSON -> One CSV
+
+Input:
+  .\\staging\\2_modat_service_api\\modat_service_*_*.json
+
+Output:
+  .\\staging\\3_prepare_analyses\\modat_service_all.csv
+
+Behavior:
+- Flattens ALL fields dynamically into CSV columns (dot-separated keys)
+- Excludes field: service.tls.raw  (certificate blob too large)
+- Adds:
+    nidv_company  -> matches fqdns against known domain/company labels from:
+                    .\\staging\\1a_modat_host_api  (from filename modat_host_<label>_<YYYYMMDD>.json)
+                    .\\staging\\1b_networksdb_api (from JSON top-level key "domain")
+    nidv_hit      -> 1 if nidv_company not empty else 0
+    source_file   -> original modat_service JSON file name
+    source_ip     -> extracted from filename modat_service_<ip>_<YYYYMMDD>.json
+    scan_date     -> extracted from filename (YYYYMMDD)
+
+- Re-do / skip:
+    Creates a manifest fingerprint of input JSON files (name+size+mtime).
+    If unchanged and CSV exists: asks user to SKIP rebuild [Y/n].
+    Writes to a .tmp file first, then atomically replaces final CSV (crash-safe).
+
+Progress:
+- Shows file progress (i/total files) in-place (no verbose per-file listing).
+
+Fixes vs previous version:
+- build_known_domains_index(): splits labels on whitespace/;|, to prevent "ibm.com<TAB>maersk.com" as one label
+- flatten(): joins primitive lists with ';' (not '-') and adds *_count for list-of-dicts too
+"""
+
 from __future__ import annotations
 
 import csv
@@ -27,6 +61,7 @@ DIR_1B = Path("./staging/1b_networksdb_api")
 # SMALL UTILITIES
 # ============================================================
 DOMAIN_RE = re.compile(r"^(?!-)(?:[a-z0-9-]{1,63}\.)+[a-z]{2,63}$", re.IGNORECASE)
+SEP_SPLIT_RE = re.compile(r"[\s;|,]+")
 
 def ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
     ans = input(prompt).strip().lower()
@@ -36,6 +71,7 @@ def ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
 
 
 def clean_for_csv(value) -> str:
+    """Minimal cleaning; keep semicolons intact."""
     if value is None:
         return ""
     if isinstance(value, bool):
@@ -44,6 +80,7 @@ def clean_for_csv(value) -> str:
         return str(value)
 
     text = str(value)
+    # Normalize whitespace, remove newlines/tabs
     text = text.replace("\r\n", " ").replace("\n", " ").replace("\r", " ").replace("\t", " ")
     text = text.strip().strip('"').strip("'")
     return text
@@ -55,8 +92,84 @@ def dict_to_clean_string(obj) -> str:
     except Exception:
         return clean_for_csv(str(obj))
 
+def normalize_fqdns(value) -> list[str]:
+    """
+    Ensure fqdns is a clean list of hostnames.
+    Accepts:
+      - list[str] (but elements may themselves contain tabs/whitespace-separated hostnames!)
+      - str with whitespace/tab/;|, separated hostnames.
+    Returns a flattened list of cleaned hostnames.
+    """
+    def split_one(s: str) -> list[str]:
+        parts = SEP_SPLIT_RE.split(s.strip())
+        out = []
+        for p in parts:
+            t = p.strip().strip(".")
+            if t:
+                out.append(t)
+        return out
+
+    if value is None:
+        return []
+
+    # If list: flatten each element (and split if that element contains tabs/spaces etc.)
+    if isinstance(value, list):
+        out = []
+        for x in value:
+            if x is None:
+                continue
+            s = str(x).strip()
+            if not s:
+                continue
+            out.extend(split_one(s))
+        return out
+
+    # If string: split once
+    if isinstance(value, str):
+        return split_one(value)
+
+    # fallback
+    s = str(value).strip().strip(".")
+    return [s] if s else []
+
+
+
+def normalize_domain_token(token: str) -> str | None:
+    """
+    Normalize a token into a domain label if it looks like a domain.
+    Drops obvious junk and fixes the tab/space issue you saw in nidv_company.
+    """
+    if not token:
+        return None
+    d = token.strip().lower().strip(".")
+    if not d:
+        return None
+    if DOMAIN_RE.fullmatch(d):
+        return d
+    return None
+
+
+def split_to_domains(value: str) -> list[str]:
+    """
+    Split a possibly multi-valued label (whitespace/;|, separated) into domains.
+    """
+    parts = SEP_SPLIT_RE.split(value.strip())
+    out = []
+    for p in parts:
+        dom = normalize_domain_token(p)
+        if dom:
+            out.append(dom)
+    return out
+
 
 def flatten(obj, parent_key: str = "", sep: str = ".") -> dict[str, str]:
+    """
+    Flatten nested dict/list into dot-keyed columns.
+    Skips: service.tls.raw
+    Lists:
+      - primitives -> joined with ';' and also adds *_count
+      - dict/list  -> JSON-stringified and also adds *_count
+    """
     items: dict[str, str] = {}
 
     if isinstance(obj, dict):
@@ -71,12 +184,18 @@ def flatten(obj, parent_key: str = "", sep: str = ".") -> dict[str, str]:
         return items
 
     if isinstance(obj, list):
+        # Always add count for lists (helps analysis)
+        if parent_key:
+            items[parent_key + "_count"] = str(len(obj))
+
+        # List of primitives: join into one cell (use ';' to avoid '-' ambiguity)
         if all(not isinstance(x, (dict, list)) for x in obj):
             vals = [str(x) for x in obj if x is not None]
-            items[parent_key] = clean_for_csv("-".join(vals))
+            items[parent_key] = clean_for_csv(";".join(vals))
             items[parent_key + "_count"] = str(len(vals))
             return items
 
+        # List containing dict/list: stringify (keeps minimal complexity)
         items[parent_key] = dict_to_clean_string(obj)
         return items
 
@@ -92,6 +211,11 @@ def extract_base_from_fqdn(fqdn: str) -> str:
 
 
 def build_known_domains_index() -> set[str]:
+    """
+    Known labels/domains from:
+    - 1b: JSON top-level "domain" (can be multi-valued in messy inputs; we split just in case)
+    - 1a: filename: modat_host_<label>_<YYYYMMDD>.json (label may accidentally contain multiple domains; split!)
+    """
     known: set[str] = set()
 
     # 1b: read domain
@@ -100,10 +224,9 @@ def build_known_domains_index() -> set[str]:
             try:
                 data = json.loads(f.read_text(encoding="utf-8"))
                 d = data.get("domain")
-                if isinstance(d, str):
-                    d = d.strip().lower().strip(".")
-                    if d and DOMAIN_RE.fullmatch(d):
-                        known.add(d)
+                if isinstance(d, str) and d.strip():
+                    for dom in split_to_domains(d):
+                        known.add(dom)
             except Exception:
                 pass
 
@@ -114,14 +237,21 @@ def build_known_domains_index() -> set[str]:
             m = rx.match(f.name)
             if not m:
                 continue
-            label = m.group("label").strip().lower().strip(".")
-            if label:
-                known.add(label)
+            label = m.group("label")
+            if isinstance(label, str) and label.strip():
+                # IMPORTANT: split label to avoid "ibm.com<TAB>maersk.com" becoming one known domain
+                for dom in split_to_domains(label):
+                    known.add(dom)
 
     return known
 
 
 def match_nidv_company(fqdns: list[str], known_domains: set[str]) -> str:
+    """
+    Match fqdn -> known domain labels:
+      - exact match OR suffix match (.domain)
+    Returns ';'-joined unique matches (sorted).
+    """
     matches = set()
 
     for fqdn in fqdns or []:
@@ -136,8 +266,7 @@ def match_nidv_company(fqdns: list[str], known_domains: set[str]) -> str:
 
         # Suffix match
         for dom in known_domains:
-            d = dom.strip(".")
-            if d and h.endswith("." + d):
+            if h.endswith("." + dom):
                 matches.add(dom)
 
     return ";".join(sorted(matches))
@@ -198,7 +327,6 @@ def process_service_jsons_to_one_csv(service_dir: Path, output_csv_tmp: Path) ->
     total_files = len(json_files)
 
     for i, jf in enumerate(json_files, start=1):
-        # progress line only (no verbose listing)
         print(f"[INFO] Progress: {i}/{total_files} JSON files", end="\r")
 
         try:
@@ -222,11 +350,15 @@ def process_service_jsons_to_one_csv(service_dir: Path, output_csv_tmp: Path) ->
 
             row = flatten(result)
 
-            fqdns = result.get("fqdns", [])
-            if not isinstance(fqdns, list):
-                fqdns = []
+            # Normalize fqdns for BOTH CSV output and nidv matching
+            fqdns_norm = normalize_fqdns(result.get("fqdns"))
 
-            row["nidv_company"] = match_nidv_company(fqdns, known_domains)
+            # Overwrite flatten output to avoid TAB-separated / ambiguous formats
+            row["fqdns"] = ";".join(fqdns_norm)
+            row["fqdns"] = row["fqdns"].replace("\t", ";")
+            row["fqdns_count"] = str(len(fqdns_norm))
+
+            row["nidv_company"] = match_nidv_company(fqdns_norm, known_domains)
             row["nidv_hit"] = "1" if row["nidv_company"] else "0"
 
             row["source_file"] = source_file
