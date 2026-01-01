@@ -1,25 +1,9 @@
 #!/usr/bin/env python3
 """
 CPSS Resilience Scanner - Orchestrator (Flow Runner)
+to do;
+- incorporate script 3 & 4
 
-What this script does (v0):
-- Welcomes user + states prerequisites (Modat + NetworksDB API keys)
-- Determines input method:
-  - If a file exists in input:
-      - PDF  -> run 0_input_domains_from_PDF.py (expects it to write a .txt into input)
-      - TXT  -> use it directly
-      - Other -> try to extract domains and write a TXT to input; if not possible, ask user to choose PDF/TXT/manual
-  - If no file in input or user chooses manual:
-      - ask for a domain (popup) and write a TXT into input
-- Runs:
-  - 1a_domain_to_ip_modat_host.py
-  - 1b_networksdb_domain_to_ip.py
-- Summarizes and asks whether to continue with:
-  - 2_modat_service_api.py.py  (if present; also accepts 2_modat_service_api.py)
-
-Assumptions (kept minimal):
-- All scripts are in the same folder as this orchestrator.
-- 0_input_domains_from_PDF.py writes a .txt into input (or you can place your own .txt).
 """
 
 from __future__ import annotations
@@ -53,12 +37,13 @@ STAGING_1B = BASE_DIR / "staging" / "1b_networksdb_api"
 SCRIPT_PDF = BASE_DIR / "0_input_domains_from_PDF.py"
 SCRIPT_1A = BASE_DIR / "1a_domain_to_ip_modat_host.py"
 SCRIPT_1B = BASE_DIR / "1b_networksdb_domain_to_ip.py"
-SCRIPT_2 = BASE_DIR / "2_modat_service_api.py.py"  # as requested
+SCRIPT_2 = BASE_DIR / "2_modat_service_api.py.py"
 SCRIPT_2_ALT = BASE_DIR / "2_modat_service_api.py"
+SCRIPT_3 = BASE_DIR / "3_process_json_to_csv.py"
+SCRIPT_4 = BASE_DIR / "4_retrieve_cve_info.py"
 
 MODAT_KEY = API_KEY_DIR / "modat_api_key.txt"
 NETWORKSDB_KEY = API_KEY_DIR / "networksdb_api_key.txt"
-
 
 # ============================================================
 # UI helpers
@@ -91,10 +76,6 @@ def popup_yesno(title: str, msg: str) -> bool:
 
 
 def popup_choice_method() -> str:
-    """
-    Ask user to choose among: pdf / txt / manual
-    Returns one of: "pdf", "txt", "manual"
-    """
     msg = (
         "Input file format could not be processed.\n\n"
         "Choose an alternative method:\n"
@@ -367,9 +348,34 @@ def main() -> int:
         return 2
 
     run_script(step2)
+    popup_info("Step 2 complete", "Step 2 finished (service scan).")
 
-    popup_info("Done", "Step 2 finished. (More steps can be added later.)")
+    # --- Step 3: Process JSON to CSV ---
+    if not SCRIPT_3.exists():
+        popup_info("Error", f"Missing script: {SCRIPT_3.name}")
+        return 2
+
+    run_script(SCRIPT_3)
+    popup_info("Step 3 complete", "Step 3 finished (JSON → CSV).")
+
+    # --- Step 4: Optional CVE enrichment via NVD ---
+    do_cve = popup_yesno(
+        "Retrieve CVE info?",
+        "Step 3 finished.\n\nRetrieve additional CVE information from the NVD API (4_retrieve_cve_info.py)?"
+    )
+
+    if do_cve:
+        if not SCRIPT_4.exists():
+            popup_info("Error", f"Missing script: {SCRIPT_4.name}")
+            return 2
+        run_script(SCRIPT_4)
+        popup_info("Step 4 complete", "Step 4 finished (NVD CVE enrichment).")
+    else:
+        print("[INFO] Skipping Step 4 (NVD CVE enrichment).")
+
+    popup_info("Done", "Flow finished (Steps 1–3, optional 4).")
     print("[INFO] Flow complete.")
+
     return 0
 
 
