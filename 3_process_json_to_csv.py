@@ -1,46 +1,15 @@
 #!/usr/bin/env python3
-"""
-CPSS - Prepare Analyses: Convert Modat Service JSON -> One CSV
-
-Input:
-  .\\staging\\2_modat_service_api\\modat_service_*_*.json
-
-Output:
-  .\\staging\\3_prepare_analyses\\modat_service_all.csv
-
-Behavior:
-- Flattens ALL fields dynamically into CSV columns (dot-separated keys)
-- Excludes field: service.tls.raw  (certificate blob too large)
-- Adds:
-    nidv_company  -> matches fqdns against known domain/company labels from:
-                    .\\staging\\1a_modat_host_api  (from filename modat_host_<label>_<YYYYMMDD>.json)
-                    .\\staging\\1b_networksdb_api (from JSON top-level key "domain")
-    nidv_hit      -> 1 if nidv_company not empty else 0
-    source_file   -> original modat_service JSON file name
-    source_ip     -> extracted from filename modat_service_<ip>_<YYYYMMDD>.json
-    scan_date     -> extracted from filename (YYYYMMDD)
-
-- Re-do / skip:
-    Creates a manifest fingerprint of input JSON files (name+size+mtime).
-    If unchanged and CSV exists: asks user to SKIP rebuild [Y/n].
-    Writes to a .tmp file first, then atomically replaces final CSV (crash-safe).
-
-Progress:
-- Shows file progress (i/total files) in-place (no verbose per-file listing).
-
-Fixes vs previous version:
-- build_known_domains_index(): splits labels on whitespace/;|, to prevent "ibm.com<TAB>maersk.com" as one label
-- flatten(): joins primitive lists with ';' (not '-') and adds *_count for list-of-dicts too
-"""
 
 from __future__ import annotations
 
 import csv
+import sys
 import json
 import re
 import hashlib
 from pathlib import Path
 
+PROGRESS_EVERY_N_FILES = 25
 
 # ============================================================
 # PATHS
@@ -93,13 +62,6 @@ def dict_to_clean_string(obj) -> str:
         return clean_for_csv(str(obj))
 
 def normalize_fqdns(value) -> list[str]:
-    """
-    Ensure fqdns is a clean list of hostnames.
-    Accepts:
-      - list[str] (but elements may themselves contain tabs/whitespace-separated hostnames!)
-      - str with whitespace/tab/;|, separated hostnames.
-    Returns a flattened list of cleaned hostnames.
-    """
     def split_one(s: str) -> list[str]:
         parts = SEP_SPLIT_RE.split(s.strip())
         out = []
@@ -135,10 +97,6 @@ def normalize_fqdns(value) -> list[str]:
 
 
 def normalize_domain_token(token: str) -> str | None:
-    """
-    Normalize a token into a domain label if it looks like a domain.
-    Drops obvious junk and fixes the tab/space issue you saw in nidv_company.
-    """
     if not token:
         return None
     d = token.strip().lower().strip(".")
@@ -150,9 +108,6 @@ def normalize_domain_token(token: str) -> str | None:
 
 
 def split_to_domains(value: str) -> list[str]:
-    """
-    Split a possibly multi-valued label (whitespace/;|, separated) into domains.
-    """
     parts = SEP_SPLIT_RE.split(value.strip())
     out = []
     for p in parts:
@@ -163,13 +118,6 @@ def split_to_domains(value: str) -> list[str]:
 
 
 def flatten(obj, parent_key: str = "", sep: str = ".") -> dict[str, str]:
-    """
-    Flatten nested dict/list into dot-keyed columns.
-    Skips: service.tls.raw
-    Lists:
-      - primitives -> joined with ';' and also adds *_count
-      - dict/list  -> JSON-stringified and also adds *_count
-    """
     items: dict[str, str] = {}
 
     if isinstance(obj, dict):
@@ -211,11 +159,6 @@ def extract_base_from_fqdn(fqdn: str) -> str:
 
 
 def build_known_domains_index() -> set[str]:
-    """
-    Known labels/domains from:
-    - 1b: JSON top-level "domain" (can be multi-valued in messy inputs; we split just in case)
-    - 1a: filename: modat_host_<label>_<YYYYMMDD>.json (label may accidentally contain multiple domains; split!)
-    """
     known: set[str] = set()
 
     # 1b: read domain
@@ -242,33 +185,23 @@ def build_known_domains_index() -> set[str]:
                 # IMPORTANT: split label to avoid "ibm.com<TAB>maersk.com" becoming one known domain
                 for dom in split_to_domains(label):
                     known.add(dom)
-
     return known
 
 
 def match_nidv_company(fqdns: list[str], known_domains: set[str]) -> str:
-    """
-    Match fqdn -> known domain labels:
-      - exact match OR suffix match (.domain)
-    Returns ';'-joined unique matches (sorted).
-    """
     matches = set()
-
     for fqdn in fqdns or []:
         h = extract_base_from_fqdn(fqdn).strip(".")
         if not h:
             continue
-
         # Fast exact match
         if h in known_domains:
             matches.add(h)
             continue
-
         # Suffix match
         for dom in known_domains:
             if h.endswith("." + dom):
                 matches.add(dom)
-
     return ";".join(sorted(matches))
 
 
@@ -300,9 +233,19 @@ def save_manifest(m: dict) -> None:
 
 
 def atomic_replace(tmp_path: Path, final_path: Path) -> None:
-    if final_path.exists():
-        final_path.unlink()
-    tmp_path.rename(final_path)
+    tmp_path.replace(final_path)
+
+def progress_update(i: int, total: int, every: int = 25) -> None:
+    if total <= 0:
+        total = 1
+    if not (i == 1 or i == total or (every and i % every == 0)):
+        return
+
+    pct = (i / total) * 100
+    msg = f"[STATUS] Progress: {i}/{total} files ({pct:.1f}%)"
+
+    sys.stdout.write("\r" + msg.ljust(80))
+    sys.stdout.flush()
 
 
 # ============================================================
@@ -327,8 +270,7 @@ def process_service_jsons_to_one_csv(service_dir: Path, output_csv_tmp: Path) ->
     total_files = len(json_files)
 
     for i, jf in enumerate(json_files, start=1):
-        print(f"[INFO] Progress: {i}/{total_files} JSON files", end="\r")
-
+        progress_update(i, total_files, every=PROGRESS_EVERY_N_FILES)
         try:
             data = json.loads(jf.read_text(encoding="utf-8"))
         except Exception:
@@ -368,7 +310,8 @@ def process_service_jsons_to_one_csv(service_dir: Path, output_csv_tmp: Path) ->
             all_rows.append(row)
             all_headers.update(row.keys())
 
-    print()  # newline after progress
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
     if not all_rows:
         print("[ERROR] No rows collected; not writing CSV.")

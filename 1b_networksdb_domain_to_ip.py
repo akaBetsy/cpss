@@ -38,10 +38,23 @@ delay_seconds = 1.5
 with input_file.open("r", encoding="utf-8") as f:
     domains = [line.strip() for line in f if line.strip()]
 
-# Already processed today detection
-def domain_already_scanned(domain: str, out_dir: Path, date: str) -> bool:
-    safe = domain.replace("/", "_")
-    return (out_dir / f"networksdb_{safe}_{date}.json").exists()
+# Already processed domains detection
+def load_completed_safe_domains() -> set[str]:
+    completed = set()
+    if not STAGING_DIR.exists():
+        return completed
+
+    for f in STAGING_DIR.glob("networksdb_*_*.json"):
+        stem = f.stem
+        parts = stem.split("_")
+        if len(parts) >= 3:
+            safe_parts = parts[1:-1]
+            safe = "_".join(safe_parts).lower()
+            completed.add(safe)
+    return completed
+
+COMPLETED_SAFE_DOMAINS = load_completed_safe_domains()
+print(f"[INFO] Found {len(COMPLETED_SAFE_DOMAINS)} already processed domains in '{STAGING_DIR}'.")
 
 
 # === HELPER: NORMALIZE IP object for parity with MODAT ===
@@ -75,8 +88,11 @@ with log_file.open("a", encoding="utf-8") as log:
         log.write("domain,status,results,timestamp\n")
 
     for domain in domains:
-        if domain_already_scanned(domain, STAGING_DIR, today):
-            print(f"[SKIP] {domain} already scanned (JSON exists in {STAGING_DIR})")
+        safe = domain.replace("/", "_").lower()
+
+        if safe in COMPLETED_SAFE_DOMAINS:
+            print(f"[SKIP] {domain} (safe='{safe}') already processed in '{STAGING_DIR}'.")
+            log.write(f"{domain},SKIP_EXISTS,0,\"{datetime.now().isoformat()}\"\n")
             continue
 
         print(f"Querying: {domain}")

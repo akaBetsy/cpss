@@ -4,14 +4,12 @@ from __future__ import annotations
 import argparse
 import csv
 import json
-import os
 import re
 import sys
 import time
-from dataclasses import dataclass, asdict
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Any, Dict, Iterable, List, Optional, Set, Tuple
+from typing import Any, Dict, List, Optional, Set
 
 import requests
 
@@ -35,17 +33,6 @@ CHECKPOINT_EVERY = 25
 CVE_RE = re.compile(r"\bCVE-\d{4}-\d{4,7}\b", re.IGNORECASE)
 
 # ──────────────────────────────────────────────────────────────
-
-
-@dataclass
-class CvssSummary:
-    v31_baseScore: Optional[float] = None
-    v31_baseSeverity: Optional[str] = None
-    v31_vectorString: Optional[str] = None
-    v40_baseScore: Optional[float] = None
-    v40_baseSeverity: Optional[str] = None
-    v40_vectorString: Optional[str] = None
-
 
 def utc_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat()
@@ -123,7 +110,26 @@ def load_existing_jsonl(jsonl_path: Path) -> Dict[str, Dict[str, Any]]:
                         cve = str(first["cve"].get("id", "")).strip().upper()
 
             if cve.startswith("CVE-"):
+                # --- NORMALIZE shapes so CSV export is consistent ---
+                # If it's a raw NVD response (top-level vulnerabilities), wrap it.
+                if "nvd" not in obj and isinstance(obj.get("vulnerabilities"), list):
+                    obj = {
+                        "cve_id": cve,
+                        "fetched_at": obj.get("timestamp") or None,
+                        "nvd": obj,
+                        "nvd_metrics": extract_nvd_metrics(obj),
+                    }
+                # If it's {"cve": {...}} shape (rare), wrap into NVD-like container
+                elif "nvd" not in obj and isinstance(obj.get("cve"), dict) and obj.get("cve", {}).get("id"):
+                    pseudo_nvd = {"vulnerabilities": [{"cve": obj["cve"]}]}
+                    obj = {
+                        "cve_id": cve,
+                        "fetched_at": None,
+                        "nvd": pseudo_nvd,
+                        "nvd_metrics": extract_nvd_metrics(pseudo_nvd),
+                    }
                 records[cve] = obj
+
     return records
 
 
@@ -135,44 +141,12 @@ def write_jsonl_atomic(path: Path, records_by_cve: Dict[str, Dict[str, Any]]) ->
     tmp.replace(path)
 
 
-def parse_cvss_from_nvd(nvd_json: Dict[str, Any]) -> CvssSummary:
-    out = CvssSummary()
-
+def extract_nvd_metrics(nvd_json: Dict[str, Any]) -> Dict[str, Any]:
     vulns = nvd_json.get("vulnerabilities") or []
     if not vulns:
-        return out
-
+        return {}
     cve = (vulns[0] or {}).get("cve", {}) or {}
-    metrics = cve.get("metrics", {}) or {}
-
-    def pick_metric(arr: Any) -> Optional[Dict[str, Any]]:
-        if not isinstance(arr, list) or not arr:
-            return None
-        # prefer 'Primary'
-        for m in arr:
-            if isinstance(m, dict) and m.get("type") == "Primary":
-                return m
-        # else first dict
-        for m in arr:
-            if isinstance(m, dict):
-                return m
-        return None
-
-    v31 = pick_metric(metrics.get("cvssMetricV31"))
-    if v31:
-        cvss = v31.get("cvssData", {}) or {}
-        out.v31_baseScore = safe_float(cvss.get("baseScore"))
-        out.v31_baseSeverity = cvss.get("baseSeverity") or v31.get("baseSeverity")
-        out.v31_vectorString = cvss.get("vectorString")
-
-    v40 = pick_metric(metrics.get("cvssMetricV40"))
-    if v40:
-        cvss = v40.get("cvssData", {}) or {}
-        out.v40_baseScore = safe_float(cvss.get("baseScore"))
-        out.v40_baseSeverity = cvss.get("baseSeverity") or v40.get("baseSeverity")
-        out.v40_vectorString = cvss.get("vectorString")
-
-    return out
+    return cve.get("metrics", {}) or {}
 
 
 def fetch_nvd_cve(
@@ -247,17 +221,14 @@ def records_to_flat_rows(records_by_cve: Dict[str, Dict[str, Any]]) -> List[Dict
                     desc = d.get("value")
                     break
 
-        cvss = rec.get("cvss") or {}
+        metrics = rec.get("nvd_metrics") or {}
+        metrics_json = json.dumps(metrics, ensure_ascii=False)
+
         rows.append({
             "cve_id": cve_id,
             "published": published,
             "lastModified": last_modified,
-            "cvss_v31_baseScore": cvss.get("v31_baseScore"),
-            "cvss_v31_baseSeverity": cvss.get("v31_baseSeverity"),
-            "cvss_v31_vectorString": cvss.get("v31_vectorString"),
-            "cvss_v40_baseScore": cvss.get("v40_baseScore"),
-            "cvss_v40_baseSeverity": cvss.get("v40_baseSeverity"),
-            "cvss_v40_vectorString": cvss.get("v40_vectorString"),
+            "nvd_metrics_json": metrics_json,
             "description_en": desc,
         })
 
@@ -283,6 +254,36 @@ def prompt_yes_no(question: str, default_no: bool = True) -> bool:
     if not resp:
         return not default_no
     return resp in {"y", "yes"}
+
+def parse_iso_dt(value: Any) -> Optional[datetime]:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(str(value).replace("Z", "+00:00"))
+    except Exception:
+        return None
+
+
+def nvd_has_any_cvss_metric(rec: Dict[str, Any]) -> bool:
+    metrics = rec.get("nvd_metrics")
+    if not isinstance(metrics, dict):
+        # fallback: try inside embedded NVD payload
+        nvd = rec.get("nvd") if isinstance(rec.get("nvd"), dict) else {}
+        vulns = nvd.get("vulnerabilities") or []
+        cve = ((vulns[0] or {}).get("cve") or {}) if vulns else {}
+        metrics = cve.get("metrics") or {}
+
+    if not isinstance(metrics, dict) or not metrics:
+        return False
+
+    # If any known metric family exists and is a non-empty list → considered “filled”
+    for k in ("cvssMetricV2", "cvssMetricV30", "cvssMetricV31", "cvssMetricV40"):
+        v = metrics.get(k)
+        if isinstance(v, list) and len(v) > 0:
+            return True
+
+    return False
+
 
 
 def main() -> None:
@@ -314,13 +315,56 @@ def main() -> None:
     # 2) Load existing JSONL (if any)
     existing = load_existing_jsonl(out_jsonl)
     existing_set = set(existing.keys())
-    cve_set = set(cves)
 
+    # ── Age/quality checks on existing records ─────────────────────────
+    now_utc = datetime.now(timezone.utc)
+    week_ago = now_utc.timestamp() - (7 * 24 * 60 * 60)
+    month_ago = now_utc.timestamp() - (30 * 24 * 60 * 60)
+
+    older_than_week: Set[str] = set()
+    older_than_month: Set[str] = set()
+    missing_cvss: Set[str] = set()
+
+    for cve_id, rec in existing.items():
+        dt = parse_iso_dt(rec.get("fetched_at"))
+        if dt:
+            ts = dt.timestamp()
+            if ts < week_ago:
+                older_than_week.add(cve_id)
+            if ts < month_ago:
+                older_than_month.add(cve_id)
+
+        if not nvd_has_any_cvss_metric(rec):
+            missing_cvss.add(cve_id)
+
+    print("\n=== Data freshness / completeness ===")
+    print(f"Fetched_at older than 1 week : {len(older_than_week)}")
+    print(f"Fetched_at older than 1 month: {len(older_than_month)}")
+    print(f"Missing/empty CVSS score     : {len(missing_cvss)}")
+
+    print("\nSelect rescan buckets (comma-separated), or press Enter for none:")
+    print("  [1] Older than 1 week")
+    print("  [2] Older than 1 month")
+    print("  [3] Missing/empty CVSS metrics")
+    bucket_sel = input("Buckets: ").strip()
+
+    selected_buckets = set()
+    if bucket_sel:
+        for tok in bucket_sel.split(","):
+            t = tok.strip()
+            if t in {"1", "2", "3"}:
+                selected_buckets.add(t)
+
+    rescan_week = "1" in selected_buckets
+    rescan_month = "2" in selected_buckets
+    rescan_missing_cvss = "3" in selected_buckets
+
+    cve_set = set(cves)
     overlap = len(cve_set & existing_set)
     new_missing = sorted(cve_set - existing_set)
     extra_in_jsonl = sorted(existing_set - cve_set)
 
-    print("\n""=== Resume / Rescan Overview ===")
+    print("\n""=== Resume / 3 Overview ===")
     print(f"CVEs in {out_txt.name}: {len(cves)}")
     print(f"CVEs already in {out_jsonl.name}: {len(existing_set)}")
     print(f"Overlap (already covered): {overlap}")
@@ -328,16 +372,34 @@ def main() -> None:
     if extra_in_jsonl:
         print(f"Note: {len(extra_in_jsonl)} CVEs exist in JSONL but are not present in the current TXT list (kept unless refreshed).")
 
-    # 3) Ask scan mode (US English as requested)
+    # 3) Ask scan mode
     print("Select scan mode:")
     print("  [1] Scan ONLY new CVEs (missing from JSONL)  [default]")
     print("  [2] Refresh ALL CVEs from TXT (overwrite existing records)")
-    choice = input("Enter 1 or 2: ").strip()
-    if choice not in {"1", "2"}:
+    print("  [3] Scan ONLY selected rescan buckets (week/month/missing-cvss)")
+    choice = input("Enter 1, 2 or 3: ").strip()
+    if choice not in {"1", "2", "3"}:
         choice = "1"
 
     refresh_all = (choice == "2")
-    to_fetch = cves if refresh_all else new_missing
+    base_to_fetch = set(cves if refresh_all else new_missing)
+    # Optional rescans (union on top of the base selection)
+    rescan_set: Set[str] = set()
+    if rescan_week:
+        rescan_set |= older_than_week
+    if rescan_month:
+        rescan_set |= older_than_month
+    if rescan_missing_cvss:
+        rescan_set |= missing_cvss
+
+    refresh_all = (choice == "2")
+
+    if choice == "3":
+        to_fetch = sorted(rescan_set)
+    else:
+        base_to_fetch = set(cves if refresh_all else new_missing)
+        to_fetch = sorted(base_to_fetch | rescan_set)
+
 
     if not to_fetch:
         print("[INFO] Nothing to fetch (all CVEs are already present).")
@@ -352,8 +414,12 @@ def main() -> None:
     print("=== Scan Plan ===")
     print(f"Output JSONL: {out_jsonl}")
     print(f"Output CSV : {out_csv}")
+    print(f"Rescan set : {len(rescan_set)} CVEs (week/month/missing-cvss)")
     print(f"Will fetch : {len(to_fetch)} CVEs")
-    print(f"Mode       : {'REFRESH ALL (overwrite)' if refresh_all else 'NEW ONLY'}")
+    if choice == "3":
+        print("Mode       : RESCAN ONLY (selected buckets)")
+    else:
+        print(f"Mode       : {'REFRESH ALL (overwrite)' if refresh_all else 'NEW ONLY'}")
     print(f"API key    : {'provided' if api_key else 'not provided'}")
 
     # 4) Fetch loop with checkpointing
@@ -376,8 +442,8 @@ def main() -> None:
         record = {
             "cve_id": cve,
             "fetched_at": utc_now_iso(),
-            "cvss": asdict(parse_cvss_from_nvd(data)),
             "nvd": data,
+            "nvd_metrics": extract_nvd_metrics(data),
         }
 
         # Overwrite existing record for this CVE (ensures each CVE appears once)

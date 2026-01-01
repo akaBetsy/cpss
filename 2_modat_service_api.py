@@ -262,7 +262,7 @@ def main() -> int:
     print(f"Unique IPv4s (combined)           : {len(all_ips)}")
     print(f"Unique IPv4s from Modat host      : {len(modat_ips)}")
     print(f"Unique IPv4s from NetworksDB      : {len(net_ips)}")
-    print(f"Extra IPv4s (NetworksDB vs host)  : {len(extra_net)}")
+    print(f"Extra IPv4s (NetworksDB vs Modat) : {len(extra_net)}")
     print(f"Output list written to            : {OUT_TXT}")
     print("========================================\n")
 
@@ -275,14 +275,14 @@ def main() -> int:
         f"Unique IPv4s (combined)           : {len(all_ips)}\n"
         f"Unique IPv4s from Modat host      : {len(modat_ips)}\n"
         f"Unique IPv4s from NetworksDB      : {len(net_ips)}\n"
-        f"Extra IPv4s (NetworksDB vs host)  : {len(extra_net)}\n"
+        f"Extra IPv4s (NetworksDB vs Modat) : {len(extra_net)}\n"
         f"Output list written to            : {OUT_TXT}\n"
         "========================================\n"
     )
 
     stats_path.write_text(stats_content, encoding="utf-8")
 
-    ans = input("Continue and rescan these IPs against Modat SERVICE API? [y/N]: ").strip().lower()
+    ans = input("Continue and scan these IPs against Modat SERVICE API? [y/N]: ").strip().lower()
     if ans != "y":
         print("[INFO] Stopped before Modat service rescan.")
         return 0
