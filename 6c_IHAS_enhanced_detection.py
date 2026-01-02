@@ -472,7 +472,8 @@ def identify_ihas_enhanced(row):
         'http_path': safe_str('service.http.path') or safe_str('http.path'),
         'headers': safe_str('service.http.headers') or safe_str('http.headers'),
         'banner': safe_str('service.banner'),
-        'product': safe_str('service.product'),
+        'product_b': safe_str('service.fingerprints.os.product'),
+        'product_a': safe_str('service.fingerprints.service.product'),
         'tags': safe_str('service.fingerprints.tags'),
         'cert_issuer': (safe_str('service.tls.issuer.common_name') or
                        safe_str('service.tls.issuer') or
@@ -487,7 +488,8 @@ def identify_ihas_enhanced(row):
     all_text = ' '.join([
         fields['title'],
         fields['banner'],
-        fields['product'],
+        fields['product_a'],
+        fields['product_b'],
         fields['http_path'],
         fields['headers'],
         body_snippet,  # Include limited body
