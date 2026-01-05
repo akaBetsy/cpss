@@ -11,6 +11,272 @@ import re
 import pandas as pd
 
 # ========================================
+# VENDOR DEFAULT PORT CONFIGURATION
+# ========================================
+
+VENDOR_DEFAULT_PORTS = {
+    # Hikvision
+    8000: {
+        'brand': 'Hikvision',
+        'confidence_boost': 15,
+        'category': 'VSS',
+        'description': 'Hikvision HTTP'
+    },
+    34567: {
+        'brand': 'Hikvision',
+        'type': 'DVR/NVR',
+        'confidence_boost': 20,
+        'category': 'VSS',
+        'description': 'Hikvision DVR/NVR'
+    },
+
+    # Dahua
+    37777: {
+        'brand': 'Dahua',
+        'confidence_boost': 20,
+        'category': 'VSS',
+        'description': 'Dahua TCP'
+    },
+    3800: {
+        'brand': 'Dahua',
+        'confidence_boost': 15,
+        'category': 'VSS',
+        'description': 'Dahua HTTP alternate'
+    },
+
+    # Axis
+    8080: {
+        'brand': 'Axis',
+        'confidence_boost': 5,
+        'category': 'VSS',
+        'description': 'Axis HTTP (common port)'
+    },
+
+    # Genetec
+    4502: {
+        'brand': 'Genetec',
+        'type': 'Omnicast',
+        'confidence_boost': 15,
+        'category': 'EACS',
+        'description': 'Genetec Omnicast'
+    },
+
+    # RTSP
+    554: {
+        'protocol': 'RTSP',
+        'confidence_boost': 10,
+        'category': 'VSS',
+        'description': 'RTSP standard'
+    },
+    8554: {
+        'protocol': 'RTSP',
+        'confidence_boost': 10,
+        'category': 'VSS',
+        'description': 'RTSP alternate'
+    },
+}
+
+# ========================================
+# MODERN CPSS FEATURES CONFIGURATION
+# ========================================
+
+MODERN_FEATURES_CONFIG = {
+    'cloud_connectivity': {
+        'patterns': [
+            r'\bp2p\b', r'peer.?to.?peer',
+            r'\bddns\b', r'dynamic\s+dns', r'no-ip', r'dyndns',
+            r'cloud.*connect', r'cloud.*service',
+            r'iot.*cloud', r'remote.*cloud'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'mobile_access': {
+        'patterns': [
+            r'mobile.*app', r'mobile.*view', r'mobile.*client',
+            r'remote.*app', r'remote.*view',
+            r'qr.*code', r'qr.*setup', r'qr.*scan',
+            r'smartphone', r'tablet.*access',
+            r'android', r'ios.*app', r'iphone.*app'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'remote_management': {
+        'paths': [
+            r'/api/mobile/', r'/mobile/', r'/app/',
+            r'/cloud/', r'/remote/', r'/qr'
+        ],
+        'confidence_boost': 5,
+    },
+}
+
+
+def detect_modern_features(row):
+    """
+    Detect modern CPSS features (cloud, mobile, remote)
+    Returns: (detected_features: list, confidence_boost: int)
+    """
+    detected = []
+    total_boost = 0
+
+    # Searchable fields
+    http_body = str(row.get('service.http.body', '')).lower()
+    http_title = str(row.get('service.http.title', '')).lower()
+    banner = str(row.get('service.banner', '')).lower()
+
+    searchable = f"{http_body} {http_title} {banner}"
+
+    # Check cloud connectivity
+    for pattern in MODERN_FEATURES_CONFIG['cloud_connectivity']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('cloud_connectivity')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['cloud_connectivity']['confidence_boost'])
+            break
+
+    # Check mobile access
+    for pattern in MODERN_FEATURES_CONFIG['mobile_access']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('mobile_access')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['mobile_access']['confidence_boost'])
+            break
+
+    # Check remote management paths
+    for path_pattern in MODERN_FEATURES_CONFIG['remote_management']['paths']:
+        if re.search(path_pattern, searchable, re.IGNORECASE):
+            detected.append('remote_management')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['remote_management']['confidence_boost'])
+            break
+
+    return detected, total_boost
+
+
+# ========================================
+# MODERN CPSS FEATURES CONFIGURATION
+# ========================================
+# Q4 Enhancement: Cloud/Mobile indicators
+
+MODERN_FEATURES_CONFIG = {
+    'cloud_connectivity': {
+        'patterns': [
+            r'\bp2p\b', r'peer.?to.?peer',
+            r'\bddns\b', r'dynamic\s+dns', r'no-ip', r'dyndns',
+            r'cloud.*connect', r'cloud.*service',
+            r'iot.*cloud', r'remote.*cloud'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'mobile_access': {
+        'patterns': [
+            r'mobile.*app', r'mobile.*view', r'mobile.*client',
+            r'remote.*app', r'remote.*view',
+            r'qr.*code', r'qr.*setup', r'qr.*scan',
+            r'smartphone', r'tablet.*access',
+            r'android', r'ios.*app', r'iphone.*app'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'remote_management': {
+        'paths': [
+            r'/api/mobile/', r'/mobile/', r'/app/',
+            r'/cloud/', r'/remote/', r'/qr'
+        ],
+        'confidence_boost': 5,
+    },
+}
+
+
+def detect_modern_features(row):
+    """
+    Detect modern CPSS features (cloud, mobile, remote)
+    Returns: (detected_features: list, confidence_boost: int)
+    """
+    detected = []
+    total_boost = 0
+
+    # Searchable fields
+    http_body = str(row.get('service.http.body', '')).lower()
+    http_title = str(row.get('service.http.title', '')).lower()
+    banner = str(row.get('service.banner', '')).lower()
+
+    searchable = f"{http_body} {http_title} {banner}"
+
+    # Check cloud connectivity
+    for pattern in MODERN_FEATURES_CONFIG['cloud_connectivity']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('cloud_connectivity')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['cloud_connectivity']['confidence_boost'])
+            break
+
+    # Check mobile access
+    for pattern in MODERN_FEATURES_CONFIG['mobile_access']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('mobile_access')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['mobile_access']['confidence_boost'])
+            break
+
+    # Check remote management paths
+    for path_pattern in MODERN_FEATURES_CONFIG['remote_management']['paths']:
+        if re.search(path_pattern, searchable, re.IGNORECASE):
+            detected.append('remote_management')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['remote_management']['confidence_boost'])
+            break
+
+    return detected, total_boost
+
+def calculate_enhanced_confidence(row, base_confidence, brand, category, detection_methods):
+    """
+    Calculate confidence with multiple factors:
+    - Base confidence from primary detection
+    - Protocol bonuses
+    - Port bonuses
+    - Modern feature bonuses
+    - Multiple detection method bonus
+
+    Returns: final_confidence (0-100), bonus_details (dict)
+    """
+    bonuses = {}
+    total_bonus = 0
+
+    # 1. Vendor port match bonus (Q3)
+    port = row.get('service.port', 0)
+    if port in VENDOR_DEFAULT_PORTS:
+        port_info = VENDOR_DEFAULT_PORTS[port]
+
+        # If brand matches, apply boost
+        if port_info.get('brand') == brand:
+            bonus = port_info['confidence_boost']
+            bonuses['vendor_port_match'] = bonus
+            total_bonus += bonus
+        # If protocol matches (RTSP), apply smaller boost
+        elif port_info.get('protocol'):
+            bonus = port_info['confidence_boost'] // 2  # Half boost for protocol-only match
+            bonuses['protocol_port_match'] = bonus
+            total_bonus += bonus
+
+    # 2. Modern features bonus (Q4)
+    modern_features, modern_boost = detect_modern_features(row)
+    if modern_features:
+        bonuses['modern_features'] = modern_boost
+        total_bonus += modern_boost
+
+    # 3. Multiple detection methods bonus
+    method_count = len(detection_methods) if detection_methods else 0
+    if method_count >= 3:
+        bonuses['multiple_methods'] = 10
+        total_bonus += 10
+    elif method_count == 2:
+        bonuses['multiple_methods'] = 5
+        total_bonus += 5
+
+    # Calculate final confidence (cap at 100)
+    final_confidence = min(base_confidence + total_bonus, 100)
+
+    return final_confidence, bonuses
+
+# ========================================
 # COMPREHENSIVE VSS CONFIGURATION
 # ========================================
 
@@ -48,21 +314,89 @@ VSS_ENHANCED_CONFIG = {
     },
 
     'protocols': {
+        # Existing RTSP (enhanced)
         'rtsp': {
             'ports': [554, 8554],
             'banner_patterns': [
-                r'rtsp/1\.0', r'real\s+time\s+streaming',
+                r'rtsp/1\.0', r'rtsp/2\.0',
+                r'real\s*time\s*streaming',
                 r'live/stream', r'cam\d+/stream', r'/live/ch',
+                r'rtsps', r'srtp',  # Q2: Encrypted RTSP
+                r'/stream\d+', r'/video\d+',
             ],
             'confidence': 95,
-            'require_banner': True
+            'require_banner': True,
+            'protocol_bonus': 10,  # Q7: Confidence bonus
         },
+
+        # Existing ONVIF (enhanced)
         'onvif': {
             'banner_patterns': [
-                r'onvif', r'onvif.*device', r'/onvif/', r'onvif.*service'
+                r'onvif', r'onvif.*device', r'/onvif/', r'onvif.*service',
+                r'ws-security', r'wsse', r'onvif.*media',  # Enhanced
             ],
             'confidence': 100,
-            'require_banner': False
+            'require_banner': False,
+            'protocol_bonus': 15,  # Q7: Strong indicator
+        },
+
+        # Q5: PSIA - Physical Security Interoperability Alliance
+        'psia': {
+            'banner_patterns': [
+                r'\bpsia\b', r'physical\s+security\s+interoperability',
+                r'/psia/', r'psia.*service', r'psia.*media'
+            ],
+            'confidence': 100,
+            'require_banner': False,
+            'protocol_bonus': 15,  # Q7: Strong indicator
+        },
+
+        # Q2: HLS - HTTP Live Streaming (Apple)
+        'hls': {
+            'banner_patterns': [
+                r'\.m3u8', r'application/vnd\.apple\.mpegurl',
+                r'#EXTM3U', r'#EXT-X-STREAM'
+            ],
+            'paths': [
+                r'/hls/', r'/live/.*\.m3u8', r'/stream/.*\.m3u8'
+            ],
+            'confidence': 90,
+            'require_banner': False,
+            'protocol_bonus': 10,
+        },
+
+        # Q2: DASH - Dynamic Adaptive Streaming (MPEG)
+        'dash': {
+            'banner_patterns': [
+                r'\.mpd', r'application/dash\+xml',
+                r'<MPD', r'urn:mpeg:dash'
+            ],
+            'confidence': 90,
+            'require_banner': False,
+            'protocol_bonus': 10,
+        },
+
+        # Q2: MJPEG - Motion JPEG
+        'mjpeg': {
+            'banner_patterns': [
+                r'\bmjpe?g\b', r'motion\s+jpe?g',
+                r'multipart/x-mixed-replace',
+                r'boundary=.*frame'
+            ],
+            'confidence': 85,
+            'require_banner': False,
+            'protocol_bonus': 8,
+        },
+
+        # Q2: WebRTC - Real-Time Communication
+        'webrtc': {
+            'banner_patterns': [
+                r'webrtc', r'rtcpeerconnection',
+                r'webrtc.*video', r'rtc.*stream'
+            ],
+            'confidence': 90,
+            'require_banner': False,
+            'protocol_bonus': 10,
         },
     },
 
@@ -597,8 +931,61 @@ VSS_ENHANCED_CONFIG = {
 
 
 # ========================================
+# PROTOCOL DETECTION FUNCTION
+# ========================================
+def detect_vss_protocols_enhanced(row):
+    """
+    Enhanced protocol detection for VSS with Q2 additions
+    Returns: (detected_protocols: list, max_confidence: int, total_bonus: int)
+    """
+    detected = []
+    max_confidence = 0
+    total_bonus = 0
+
+    port = row.get('service.port', 0)
+    banner = str(row.get('service.banner', '')).lower()
+    http_body = str(row.get('service.http.body', '')).lower()
+    http_title = str(row.get('service.http.title', '')).lower()
+
+    searchable = f"{banner} {http_body} {http_title}"
+
+    protocols = VSS_ENHANCED_CONFIG.get('protocols', {})
+
+    for protocol_name, protocol_config in protocols.items():
+        matched = False
+
+        # Check port match
+        if 'ports' in protocol_config:
+            if port in protocol_config['ports']:
+                matched = True
+
+        # Check banner patterns
+        if 'banner_patterns' in protocol_config:
+            for pattern in protocol_config['banner_patterns']:
+                if re.search(pattern, searchable, re.IGNORECASE):
+                    matched = True
+                    break
+
+        # Check path patterns
+        if 'paths' in protocol_config:
+            for path_pattern in protocol_config['paths']:
+                if re.search(path_pattern, searchable, re.IGNORECASE):
+                    matched = True
+                    break
+
+        if matched:
+            detected.append(protocol_name)
+            max_confidence = max(max_confidence, protocol_config.get('confidence', 0))
+            total_bonus += protocol_config.get('protocol_bonus', 0)
+
+    return detected, max_confidence, total_bonus
+
+
+# ========================================
 # DETECTION FUNCTION
 # ========================================
+# CORRECTED VSS FUNCTION - READY TO USE
+# Replace your entire identify_vss_enhanced() function with this
 
 def identify_vss_enhanced(row):
     """
@@ -621,9 +1008,8 @@ def identify_vss_enhanced(row):
         return str(val).lower() if pd.notna(val) else ''
 
     fields = {
-        # Try multiple column name variations
         'title': safe_str('service.http.title') or safe_str('http.html_title'),
-        'body': safe_str('service.http.body'),  # NEW! Very useful
+        'body': safe_str('service.http.body'),
         'http_path': safe_str('service.http.path') or safe_str('http.path'),
         'headers': safe_str('service.http.headers') or safe_str('http.headers'),
         'banner': safe_str('service.banner'),
@@ -647,7 +1033,7 @@ def identify_vss_enhanced(row):
         fields['product_b'],
         fields['http_path'],
         fields['headers'],
-        body_snippet,  # Include limited body
+        body_snippet,
         fields['cert_issuer'],
         fields['cert_subject'],
         fields['tags']
@@ -686,10 +1072,8 @@ def identify_vss_enhanced(row):
                 found_in_path = fields['http_path'] and path in fields['http_path']
                 found_in_body = False
 
-                # Also search in body (first 10KB only for performance)
                 if not found_in_path and fields['body']:
                     body_search = fields['body'][:10000]
-                    # Look for path in common HTML contexts
                     if (path in body_search or
                             f'href="{path}' in body_search or
                             f'src="{path}' in body_search):
@@ -697,7 +1081,7 @@ def identify_vss_enhanced(row):
 
                 if (found_in_path or found_in_body) and brand.lower() in all_text:
                     result['is_vss'] = True
-                    result['vss_confidence'] = 90 if found_in_path else 85  # Slightly lower for body
+                    result['vss_confidence'] = 90 if found_in_path else 85
                     result['detected_brand'] = brand
                     result['vss_reason'] = f"HTTP path: {path} + brand: {brand}"
                     result['match_field'] = 'http_path' if found_in_path else 'body'
@@ -761,12 +1145,48 @@ def identify_vss_enhanced(row):
             result['match_value'] = brand_match
             return result
 
+    # ========================================
+    # VSS PROTOCOL DETECTION
+    # ========================================
+    # This runs ONLY if no brand was detected above
+
+    detected_brand = result.get('detected_brand')
+    base_confidence = result.get('vss_confidence', 0)
+
+    # Track detection methods for confidence bonus
+    detection_methods = []
+    if result['is_vss']:
+        detection_methods.append('brand_match')
+
+    # Enhancement: Check for VSS-specific protocols (HLS, DASH, PSIA, etc.)
+    protocols, protocol_conf, protocol_bonus = detect_vss_protocols_enhanced(row)
+
+    if protocols:
+        detection_methods.append('protocol')
+        # If higher confidence from protocol, use it
+        base_confidence = max(base_confidence, protocol_conf)
+        result['is_vss'] = True
+        result['protocols_detected'] = protocols
+
+    # ========================================
+    # ENHANCED CONFIDENCE CALCULATION
+    # ========================================
+
+    if result['is_vss']:  # Only calculate if something was detected
+        final_confidence, confidence_bonuses = calculate_enhanced_confidence(
+            row=row,
+            base_confidence=base_confidence,
+            brand=detected_brand,
+            category='VSS',
+            detection_methods=detection_methods
+        )
+
+        result['vss_confidence'] = final_confidence
+        result['confidence_bonuses'] = confidence_bonuses
+        result['detection_methods'] = detection_methods
+
     return result
 
 
 print("Comprehensive VSS detection loaded")
-print("  Total brands: 50")
-print("  HTTP paths: 28+")
-print("  Protocols: 2 (RTSP, ONVIF)")
 print("")
-print("  Coverage: ALL brands from requirement list")

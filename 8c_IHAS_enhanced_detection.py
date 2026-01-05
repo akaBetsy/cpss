@@ -11,6 +11,203 @@ import re
 import pandas as pd
 
 # ========================================
+# VENDOR DEFAULT PORT CONFIGURATION
+# ========================================
+
+VENDOR_DEFAULT_PORTS = {
+    # Hikvision
+    8000: {
+        'brand': 'Hikvision',
+        'confidence_boost': 15,
+        'category': 'VSS',
+        'description': 'Hikvision HTTP'
+    },
+    34567: {
+        'brand': 'Hikvision',
+        'type': 'DVR/NVR',
+        'confidence_boost': 20,
+        'category': 'VSS',
+        'description': 'Hikvision DVR/NVR'
+    },
+
+    # Dahua
+    37777: {
+        'brand': 'Dahua',
+        'confidence_boost': 20,
+        'category': 'VSS',
+        'description': 'Dahua TCP'
+    },
+    3800: {
+        'brand': 'Dahua',
+        'confidence_boost': 15,
+        'category': 'VSS',
+        'description': 'Dahua HTTP alternate'
+    },
+
+    # Axis
+    8080: {
+        'brand': 'Axis',
+        'confidence_boost': 5,
+        'category': 'VSS',
+        'description': 'Axis HTTP (common port)'
+    },
+
+    # Genetec
+    4502: {
+        'brand': 'Genetec',
+        'type': 'Omnicast',
+        'confidence_boost': 15,
+        'category': 'EACS',
+        'description': 'Genetec Omnicast'
+    },
+
+    # RTSP
+    554: {
+        'protocol': 'RTSP',
+        'confidence_boost': 10,
+        'category': 'VSS',
+        'description': 'RTSP standard'
+    },
+    8554: {
+        'protocol': 'RTSP',
+        'confidence_boost': 10,
+        'category': 'VSS',
+        'description': 'RTSP alternate'
+    },
+}
+
+# ========================================
+# MODERN CPSS FEATURES CONFIGURATION
+# ========================================
+
+MODERN_FEATURES_CONFIG = {
+    'cloud_connectivity': {
+        'patterns': [
+            r'\bp2p\b', r'peer.?to.?peer',
+            r'\bddns\b', r'dynamic\s+dns', r'no-ip', r'dyndns',
+            r'cloud.*connect', r'cloud.*service',
+            r'iot.*cloud', r'remote.*cloud'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'mobile_access': {
+        'patterns': [
+            r'mobile.*app', r'mobile.*view', r'mobile.*client',
+            r'remote.*app', r'remote.*view',
+            r'qr.*code', r'qr.*setup', r'qr.*scan',
+            r'smartphone', r'tablet.*access',
+            r'android', r'ios.*app', r'iphone.*app'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'remote_management': {
+        'paths': [
+            r'/api/mobile/', r'/mobile/', r'/app/',
+            r'/cloud/', r'/remote/', r'/qr'
+        ],
+        'confidence_boost': 5,
+    },
+}
+
+
+def detect_modern_features(row):
+    """
+    Detect modern CPSS features (cloud, mobile, remote)
+    Returns: (detected_features: list, confidence_boost: int)
+    """
+    detected = []
+    total_boost = 0
+
+    # Searchable fields
+    http_body = str(row.get('service.http.body', '')).lower()
+    http_title = str(row.get('service.http.title', '')).lower()
+    banner = str(row.get('service.banner', '')).lower()
+
+    searchable = f"{http_body} {http_title} {banner}"
+
+    # Check cloud connectivity
+    for pattern in MODERN_FEATURES_CONFIG['cloud_connectivity']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('cloud_connectivity')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['cloud_connectivity']['confidence_boost'])
+            break
+
+    # Check mobile access
+    for pattern in MODERN_FEATURES_CONFIG['mobile_access']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('mobile_access')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['mobile_access']['confidence_boost'])
+            break
+
+    # Check remote management paths
+    for path_pattern in MODERN_FEATURES_CONFIG['remote_management']['paths']:
+        if re.search(path_pattern, searchable, re.IGNORECASE):
+            detected.append('remote_management')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['remote_management']['confidence_boost'])
+            break
+
+    return detected, total_boost
+
+
+
+# ========================================
+# ENHANCED CONFIDENCE CALCULATION
+# ========================================
+
+def calculate_enhanced_confidence(row, base_confidence, brand, category, detection_methods):
+    """
+    Calculate confidence with multiple factors:
+    - Base confidence from primary detection
+    - Protocol bonuses
+    - Port bonuses
+    - Modern feature bonuses
+    - Multiple detection method bonus
+
+    Returns: final_confidence (0-100), bonus_details (dict)
+    """
+    bonuses = {}
+    total_bonus = 0
+
+    # 1. Vendor port match bonus (Q3)
+    port = row.get('service.port', 0)
+    if port in VENDOR_DEFAULT_PORTS:
+        port_info = VENDOR_DEFAULT_PORTS[port]
+
+        # If brand matches, apply boost
+        if port_info.get('brand') == brand:
+            bonus = port_info['confidence_boost']
+            bonuses['vendor_port_match'] = bonus
+            total_bonus += bonus
+        # If protocol matches (RTSP), apply smaller boost
+        elif port_info.get('protocol'):
+            bonus = port_info['confidence_boost'] // 2  # Half boost for protocol-only match
+            bonuses['protocol_port_match'] = bonus
+            total_bonus += bonus
+
+    # 2. Modern features bonus (Q4)
+    modern_features, modern_boost = detect_modern_features(row)
+    if modern_features:
+        bonuses['modern_features'] = modern_boost
+        total_bonus += modern_boost
+
+    # 3. Multiple detection methods bonus
+    method_count = len(detection_methods) if detection_methods else 0
+    if method_count >= 3:
+        bonuses['multiple_methods'] = 10
+        total_bonus += 10
+    elif method_count == 2:
+        bonuses['multiple_methods'] = 5
+        total_bonus += 5
+
+    # Calculate final confidence (cap at 100)
+    final_confidence = min(base_confidence + total_bonus, 100)
+
+    return final_confidence, bonuses
+
+
+# ========================================
 # COMPREHENSIVE I&HAS CONFIGURATION
 # ========================================
 
@@ -57,6 +254,63 @@ IHAS_ENHANCED_CONFIG = {
             ],
             'confidence': 95,
             'require_banner': True
+        },
+    },
+
+    # IoT Protocols for modern alarm systems
+    'iot_protocols': {
+        # MQTT - Message Queue Telemetry Transport
+        'mqtt': {
+            'port': 1883,
+            'banner_patterns': [
+                r'\bmqtt\b', r'mosquitto', r'mqtt\s+broker',
+                r'hivemq', r'emqx'
+            ],
+            'confidence': 85,  # Lower - also used by other IoT
+            'protocol_bonus': 8,
+        },
+
+        # CoAP - Constrained Application Protocol
+        'coap': {
+            'port': 5683,
+            'banner_patterns': [
+                r'\bcoap\b', r'constrained\s+application',
+                r'coap://'
+            ],
+            'confidence': 80,
+            'protocol_bonus': 8,
+        },
+    },
+
+    # Enhancement: Specific alarm protocols
+    'alarm_protocols': {
+        # SIA DC-09 - Security Industry Association protocol
+        'sia_dc09': {
+            'banner_patterns': [
+                r'sia\s+dc-?09', r'sia\s+dc\s+09', r'\bdc-?09\b',
+                r'sia\s+protocol', r'sia\s+level'
+            ],
+            'confidence': 100,
+            'protocol_bonus': 15,  # Strong IHAS indicator
+        },
+
+        # Contact ID - Ademco Contact ID protocol
+        'contact_id': {
+            'banner_patterns': [
+                r'contact\s+id', r'contactid', r'cid\s+protocol',
+                r'ademco\s+contact'
+            ],
+            'confidence': 100,
+            'protocol_bonus': 15,
+        },
+
+        # SIA IP - SIA IP Protocol
+        'sia_ip': {
+            'banner_patterns': [
+                r'sia\s+ip', r'sia-ip', r'sia\s+encryption'
+            ],
+            'confidence': 100,
+            'protocol_bonus': 15,
         },
     },
 
@@ -442,9 +696,61 @@ IHAS_ENHANCED_CONFIG = {
 
 
 # ========================================
+# PROTOCOL DETECTION FUNCTION
+# ========================================
+def detect_ihas_protocols_enhanced(row):
+    """
+    Q1/Q4 Enhancement: Detect IoT and alarm-specific protocols
+    Returns: (iot_protocols: list, alarm_protocols: list, confidence: int, bonus: int)
+    """
+    iot_detected = []
+    alarm_detected = []
+    max_confidence = 0
+    total_bonus = 0
+
+    port = row.get('service.port', 0)
+    banner = str(row.get('service.banner', '')).lower()
+    http_body = str(row.get('service.http.body', '')).lower()
+    http_title = str(row.get('service.http.title', '')).lower()
+
+    searchable = f"{banner} {http_body} {http_title}"
+
+    # Check IoT protocols
+    iot_protocols = IHAS_ENHANCED_CONFIG.get('iot_protocols', {})
+    for protocol_name, protocol_config in iot_protocols.items():
+        matched = False
+
+        if 'port' in protocol_config and port == protocol_config['port']:
+            matched = True
+
+        if 'banner_patterns' in protocol_config:
+            for pattern in protocol_config['banner_patterns']:
+                if re.search(pattern, searchable, re.IGNORECASE):
+                    matched = True
+                    break
+
+        if matched:
+            iot_detected.append(protocol_name)
+            max_confidence = max(max_confidence, protocol_config.get('confidence', 0))
+            total_bonus += protocol_config.get('protocol_bonus', 0)
+
+    # Check alarm-specific protocols
+    alarm_protocols = IHAS_ENHANCED_CONFIG.get('alarm_protocols', {})
+    for protocol_name, protocol_config in alarm_protocols.items():
+        if 'banner_patterns' in protocol_config:
+            for pattern in protocol_config['banner_patterns']:
+                if re.search(pattern, searchable, re.IGNORECASE):
+                    alarm_detected.append(protocol_name)
+                    max_confidence = max(max_confidence, protocol_config.get('confidence', 0))
+                    total_bonus += protocol_config.get('protocol_bonus', 0)
+                    break
+
+    return iot_detected, alarm_detected, max_confidence, total_bonus
+
+
+# ========================================
 # DETECTION FUNCTION
 # ========================================
-
 def identify_ihas_enhanced(row):
     """
     Comprehensive I&HAS identification with all 27 brands
@@ -466,9 +772,8 @@ def identify_ihas_enhanced(row):
         return str(val).lower() if pd.notna(val) else ''
 
     fields = {
-        # Try multiple column name variations
         'title': safe_str('service.http.title') or safe_str('http.html_title'),
-        'body': safe_str('service.http.body'),  # NEW! Very useful
+        'body': safe_str('service.http.body'),
         'http_path': safe_str('service.http.path') or safe_str('http.path'),
         'headers': safe_str('service.http.headers') or safe_str('http.headers'),
         'banner': safe_str('service.banner'),
@@ -492,7 +797,7 @@ def identify_ihas_enhanced(row):
         fields['product_b'],
         fields['http_path'],
         fields['headers'],
-        body_snippet,  # Include limited body
+        body_snippet,
         fields['cert_issuer'],
         fields['cert_subject'],
         fields['tags']
@@ -512,10 +817,8 @@ def identify_ihas_enhanced(row):
                 found_in_path = fields['http_path'] and path in fields['http_path']
                 found_in_body = False
 
-                # Also search in body (first 10KB only for performance)
                 if not found_in_path and fields['body']:
                     body_search = fields['body'][:10000]
-                    # Look for path in common HTML contexts
                     if (path in body_search or
                             f'href="{path}' in body_search or
                             f'src="{path}' in body_search):
@@ -523,37 +826,13 @@ def identify_ihas_enhanced(row):
 
                 if (found_in_path or found_in_body) and brand.lower() in all_text:
                     result['is_ihas'] = True
-                    result['ihas_confidence'] = 90 if found_in_path else 85  # Slightly lower for body
+                    result['ihas_confidence'] = 90 if found_in_path else 85
                     result['detected_brand'] = brand
                     result['ihas_reason'] = f"HTTP path: {path} + brand: {brand}"
                     result['match_field'] = 'http_path' if found_in_path else 'body'
                     result['match_pattern'] = path
                     result['match_value'] = fields['http_path'] if found_in_path else f"Found in body: {path}"
                     return result
-
-    for brand, paths in IHAS_ENHANCED_CONFIG['http_paths'].items():
-        for path in paths:
-            found_in_path = fields['http_path'] and path in fields['http_path']
-            found_in_body = False
-
-            # Also search in body (first 10KB only for performance)
-            if not found_in_path and fields['body']:
-                body_search = fields['body'][:10000]
-                # Look for path in common HTML contexts
-                if (path in body_search or
-                        f'href="{path}' in body_search or
-                        f'src="{path}' in body_search):
-                    found_in_body = True
-
-            if (found_in_path or found_in_body) and brand.lower() in all_text:
-                result['is_ihas'] = True
-                result['ihas_confidence'] = 90 if found_in_path else 85  # Slightly lower for body
-                result['detected_brand'] = brand
-                result['ihas_reason'] = f"HTTP path: {path} + brand: {brand}"
-                result['match_field'] = 'http_path' if found_in_path else 'body'
-                result['match_pattern'] = path
-                result['match_value'] = fields['http_path'] if found_in_path else f"Found in body: {path}"
-                return result
 
     # STEP 3: PROTOCOL DETECTION
     port = row.get('service.port', 0)
@@ -626,12 +905,49 @@ def identify_ihas_enhanced(row):
             result['match_value'] = brand_match
             return result
 
+    # ========================================
+    # IoT/ALARM PROTOCOL DETECTION
+    # ========================================
+    # This runs ONLY if no brand was detected above
+
+    detected_brand = result.get('detected_brand')
+    base_confidence = result.get('ihas_confidence', 0)
+
+    # Track detection methods for confidence bonus
+    detection_methods = []
+    if result['is_ihas']:
+        detection_methods.append('brand_match')
+
+    # Enhancement: Check for IoT and alarm-specific protocols
+    iot_proto, alarm_proto, protocol_conf, protocol_bonus = detect_ihas_protocols_enhanced(row)
+    all_protocols = iot_proto + alarm_proto
+
+    if all_protocols:
+        detection_methods.append('protocol')
+        # If higher confidence from protocol, use it
+        base_confidence = max(base_confidence, protocol_conf)
+        result['is_ihas'] = True
+        result['protocols_detected'] = all_protocols
+
+    # ========================================
+    # ENHANCED CONFIDENCE CALCULATION
+    # ========================================
+
+    if result['is_ihas']:  # Only calculate if something was detected
+        final_confidence, confidence_bonuses = calculate_enhanced_confidence(
+            row=row,
+            base_confidence=base_confidence,
+            brand=detected_brand,
+            category='IHAS',
+            detection_methods=detection_methods
+        )
+
+        result['ihas_confidence'] = final_confidence
+        result['confidence_bonuses'] = confidence_bonuses
+        result['detection_methods'] = detection_methods
+
     return result
 
 
 print("Comprehensive I&HAS detection loaded")
-print("  Total brands: 27")
-print("  HTTP paths: 20+")
-print("  Protocols: 2 (SIA DC-09, Contact ID)")
 print("")
-print("  Coverage: ALL brands from requirement list")

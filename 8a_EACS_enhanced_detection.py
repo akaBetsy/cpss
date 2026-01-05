@@ -12,6 +12,203 @@ import re
 import pandas as pd
 
 # ========================================
+# VENDOR DEFAULT PORT CONFIGURATION
+# ========================================
+
+VENDOR_DEFAULT_PORTS = {
+    # Hikvision
+    8000: {
+        'brand': 'Hikvision',
+        'confidence_boost': 15,
+        'category': 'VSS',
+        'description': 'Hikvision HTTP'
+    },
+    34567: {
+        'brand': 'Hikvision',
+        'type': 'DVR/NVR',
+        'confidence_boost': 20,
+        'category': 'VSS',
+        'description': 'Hikvision DVR/NVR'
+    },
+
+    # Dahua
+    37777: {
+        'brand': 'Dahua',
+        'confidence_boost': 20,
+        'category': 'VSS',
+        'description': 'Dahua TCP'
+    },
+    3800: {
+        'brand': 'Dahua',
+        'confidence_boost': 15,
+        'category': 'VSS',
+        'description': 'Dahua HTTP alternate'
+    },
+
+    # Axis
+    8080: {
+        'brand': 'Axis',
+        'confidence_boost': 5,
+        'category': 'VSS',
+        'description': 'Axis HTTP (common port)'
+    },
+
+    # Genetec
+    4502: {
+        'brand': 'Genetec',
+        'type': 'Omnicast',
+        'confidence_boost': 15,
+        'category': 'EACS',
+        'description': 'Genetec Omnicast'
+    },
+
+    # RTSP
+    554: {
+        'protocol': 'RTSP',
+        'confidence_boost': 10,
+        'category': 'VSS',
+        'description': 'RTSP standard'
+    },
+    8554: {
+        'protocol': 'RTSP',
+        'confidence_boost': 10,
+        'category': 'VSS',
+        'description': 'RTSP alternate'
+    },
+}
+
+# ========================================
+# MODERN CPSS FEATURES CONFIGURATION
+# ========================================
+
+MODERN_FEATURES_CONFIG = {
+    'cloud_connectivity': {
+        'patterns': [
+            r'\bp2p\b', r'peer.?to.?peer',
+            r'\bddns\b', r'dynamic\s+dns', r'no-ip', r'dyndns',
+            r'cloud.*connect', r'cloud.*service',
+            r'iot.*cloud', r'remote.*cloud'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'mobile_access': {
+        'patterns': [
+            r'mobile.*app', r'mobile.*view', r'mobile.*client',
+            r'remote.*app', r'remote.*view',
+            r'qr.*code', r'qr.*setup', r'qr.*scan',
+            r'smartphone', r'tablet.*access',
+            r'android', r'ios.*app', r'iphone.*app'
+        ],
+        'confidence_boost': 5,
+    },
+
+    'remote_management': {
+        'paths': [
+            r'/api/mobile/', r'/mobile/', r'/app/',
+            r'/cloud/', r'/remote/', r'/qr'
+        ],
+        'confidence_boost': 5,
+    },
+}
+
+
+def detect_modern_features(row):
+    """
+    Detect modern CPSS features (cloud, mobile, remote)
+    Returns: (detected_features: list, confidence_boost: int)
+    """
+    detected = []
+    total_boost = 0
+
+    # Searchable fields
+    http_body = str(row.get('service.http.body', '')).lower()
+    http_title = str(row.get('service.http.title', '')).lower()
+    banner = str(row.get('service.banner', '')).lower()
+
+    searchable = f"{http_body} {http_title} {banner}"
+
+    # Check cloud connectivity
+    for pattern in MODERN_FEATURES_CONFIG['cloud_connectivity']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('cloud_connectivity')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['cloud_connectivity']['confidence_boost'])
+            break
+
+    # Check mobile access
+    for pattern in MODERN_FEATURES_CONFIG['mobile_access']['patterns']:
+        if re.search(pattern, searchable, re.IGNORECASE):
+            detected.append('mobile_access')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['mobile_access']['confidence_boost'])
+            break
+
+    # Check remote management paths
+    for path_pattern in MODERN_FEATURES_CONFIG['remote_management']['paths']:
+        if re.search(path_pattern, searchable, re.IGNORECASE):
+            detected.append('remote_management')
+            total_boost = max(total_boost, MODERN_FEATURES_CONFIG['remote_management']['confidence_boost'])
+            break
+
+    return detected, total_boost
+
+
+# ========================================
+# ENHANCED CONFIDENCE CALCULATION
+# ========================================
+# Enhancement: Multi-factor confidence scoring
+
+def calculate_enhanced_confidence(row, base_confidence, brand, category, detection_methods):
+    """
+    Calculate confidence with multiple factors:
+    - Base confidence from primary detection
+    - Protocol bonuses
+    - Port bonuses
+    - Modern feature bonuses
+    - Multiple detection method bonus
+
+    Returns: final_confidence (0-100), bonus_details (dict)
+    """
+    bonuses = {}
+    total_bonus = 0
+
+    # 1. Vendor port match bonus (Q3)
+    port = row.get('service.port', 0)
+    if port in VENDOR_DEFAULT_PORTS:
+        port_info = VENDOR_DEFAULT_PORTS[port]
+
+        # If brand matches, apply boost
+        if port_info.get('brand') == brand:
+            bonus = port_info['confidence_boost']
+            bonuses['vendor_port_match'] = bonus
+            total_bonus += bonus
+        # If protocol matches (RTSP), apply smaller boost
+        elif port_info.get('protocol'):
+            bonus = port_info['confidence_boost'] // 2  # Half boost for protocol-only match
+            bonuses['protocol_port_match'] = bonus
+            total_bonus += bonus
+
+    # 2. Modern features bonus (Q4)
+    modern_features, modern_boost = detect_modern_features(row)
+    if modern_features:
+        bonuses['modern_features'] = modern_boost
+        total_bonus += modern_boost
+
+    # 3. Multiple detection methods bonus
+    method_count = len(detection_methods) if detection_methods else 0
+    if method_count >= 3:
+        bonuses['multiple_methods'] = 10
+        total_bonus += 10
+    elif method_count == 2:
+        bonuses['multiple_methods'] = 5
+        total_bonus += 5
+
+    # Calculate final confidence (cap at 100)
+    final_confidence = min(base_confidence + total_bonus, 100)
+
+    return final_confidence, bonuses
+
+
+# ========================================
 # COMPREHENSIVE EACS CONFIGURATION
 # ========================================
 
@@ -592,6 +789,65 @@ EACS_ENHANCED_CONFIG = {
         },
     },
 
+    # Enhancement: Industrial/Building Automation Protocols
+    'industrial_protocols': {
+        # BACnet - Building Automation and Control networks
+        'bacnet': {
+            'port': 47808,
+            'banner_patterns': [
+                r'\bbacnet\b', r'building\s+automation',
+                r'bacnet/ip', r'bac0'
+            ],
+            'confidence': 100,
+            'subcategory': 'BAS',
+            'protocol_bonus': 15,  # Strong BAS indicator
+        },
+
+        # Modbus - Industrial protocol (SCADA)
+        'modbus': {
+            'port': 502,
+            'banner_patterns': [
+                r'\bmodbus\b', r'modbus\s+tcp'
+            ],
+            'confidence': 95,
+            'subcategory': 'BAS',
+            'protocol_bonus': 12,
+        },
+
+        # OPC-UA - OPC Unified Architecture
+        'opc_ua': {
+            'port': 4840,
+            'banner_patterns': [
+                r'\bopc\b', r'opc-ua', r'opcua',
+                r'opc\s+unified', r'opc\s+foundation'
+            ],
+            'confidence': 100,
+            'subcategory': 'BAS',
+            'protocol_bonus': 15,
+        },
+
+        # KNX - Building automation standard
+        'knx': {
+            'port': 3671,
+            'banner_patterns': [
+                r'\bknx\b', r'knxnet', r'knx/ip'
+            ],
+            'confidence': 100,
+            'subcategory': 'BAS',
+            'protocol_bonus': 15,
+        },
+
+        # LON - Local Operating Network
+        'lon': {
+            'banner_patterns': [
+                r'\blon\b', r'lonworks', r'local\s+operating\s+network'
+            ],
+            'confidence': 95,
+            'subcategory': 'BAS',
+            'protocol_bonus': 12,
+        },
+    },
+
     # Enhanced exclusions
     'exclusions': {
         'web_hosting': [
@@ -611,11 +867,57 @@ EACS_ENHANCED_CONFIG = {
     },
 }
 
+# ========================================
+#  Industrial Protocol Detection Function
+# ========================================
+
+def detect_industrial_protocols(row):
+    """
+    Q1 Enhancement: Detect industrial/BAS protocols
+    Returns: (detected_protocols: list, is_bas: bool, confidence: int, bonus: int)
+    """
+    detected = []
+    is_bas = False
+    max_confidence = 0
+    total_bonus = 0
+
+    port = row.get('service.port', 0)
+    banner = str(row.get('service.banner', '')).lower()
+    http_body = str(row.get('service.http.body', '')).lower()
+
+    searchable = f"{banner} {http_body}"
+
+    protocols = EACS_ENHANCED_CONFIG.get('industrial_protocols', {})
+
+    for protocol_name, protocol_config in protocols.items():
+        matched = False
+
+        # Check port match
+        if 'port' in protocol_config and port == protocol_config['port']:
+            matched = True
+
+        # Check banner patterns
+        if 'banner_patterns' in protocol_config:
+            for pattern in protocol_config['banner_patterns']:
+                if re.search(pattern, searchable, re.IGNORECASE):
+                    matched = True
+                    break
+
+        if matched:
+            detected.append(protocol_name)
+            max_confidence = max(max_confidence, protocol_config.get('confidence', 0))
+            total_bonus += protocol_config.get('protocol_bonus', 0)
+
+            # Check if BAS subcategory
+            if protocol_config.get('subcategory') == 'BAS':
+                is_bas = True
+
+    return detected, is_bas, max_confidence, total_bonus
+
 
 # ========================================
 # DETECTION FUNCTION
 # ========================================
-
 def identify_eacs_enhanced(row):
     """
     Comprehensive EACS identification with all 51 brands
@@ -640,7 +942,7 @@ def identify_eacs_enhanced(row):
 
     fields = {
         'title': safe_str('service.http.title') or safe_str('http.html_title'),
-        'body': safe_str('service.http.body'),  # NEW! Very useful
+        'body': safe_str('service.http.body'),
         'http_path': safe_str('service.http.path') or safe_str('http.path'),
         'headers': safe_str('service.http.headers') or safe_str('http.headers'),
         'banner': safe_str('service.banner'),
@@ -664,7 +966,7 @@ def identify_eacs_enhanced(row):
         fields['product_b'],
         fields['http_path'],
         fields['headers'],
-        body_snippet,  # Include limited body
+        body_snippet,
         fields['cert_issuer'],
         fields['cert_subject'],
         fields['tags']
@@ -695,10 +997,8 @@ def identify_eacs_enhanced(row):
             found_in_path = fields['http_path'] and path in fields['http_path']
             found_in_body = False
 
-            # Also search in body (first 10KB only for performance)
             if not found_in_path and fields['body']:
                 body_search = fields['body'][:10000]
-                # Look for path in common HTML contexts
                 if (path in body_search or
                         f'href="{path}' in body_search or
                         f'src="{path}' in body_search):
@@ -706,7 +1006,7 @@ def identify_eacs_enhanced(row):
 
             if (found_in_path or found_in_body) and brand.lower() in all_text:
                 result['is_eacs'] = True
-                result['eacs_confidence'] = 90 if found_in_path else 85  # Slightly lower for body
+                result['eacs_confidence'] = 90 if found_in_path else 85
                 result['detected_brand'] = brand
                 result['eacs_reason'] = f"HTTP path: {path} + brand: {brand}"
                 result['match_field'] = 'http_path' if found_in_path else 'body'
@@ -799,12 +1099,53 @@ def identify_eacs_enhanced(row):
 
             return result
 
+    # ========================================
+    # INDUSTRIAL/BAS PROTOCOL DETECTION
+    # ========================================
+    # This runs ONLY if no brand was detected above
+
+    detected_brand = result.get('detected_brand')
+    base_confidence = result.get('eacs_confidence', 0)
+
+    # Track detection methods for confidence bonus
+    detection_methods = []
+    if result['is_eacs']:
+        detection_methods.append('brand_match')
+
+    # Enhancement: Check for industrial/BAS protocols
+    industrial_protocols, is_bas_device, industrial_conf, industrial_bonus = detect_industrial_protocols(row)
+
+    if industrial_protocols:
+        detection_methods.append('industrial_protocol')
+        # If higher confidence from protocol, use it
+        base_confidence = max(base_confidence, industrial_conf)
+        result['is_eacs'] = True
+        result['protocols_detected'] = industrial_protocols
+
+        # Mark as BAS if detected
+        if is_bas_device:
+            result['is_bas'] = True
+            detection_methods.append('BAS_protocol')
+
+    # ========================================
+    # ENHANCED CONFIDENCE CALCULATION
+    # ========================================
+
+    if result['is_eacs']:  # Only calculate if something was detected
+        final_confidence, confidence_bonuses = calculate_enhanced_confidence(
+            row=row,
+            base_confidence=base_confidence,
+            brand=detected_brand,
+            category='EACS',
+            detection_methods=detection_methods
+        )
+
+        result['eacs_confidence'] = final_confidence
+        result['confidence_bonuses'] = confidence_bonuses
+        result['detection_methods'] = detection_methods
+
     return result
 
 
 print("Comprehensive EACS detection loaded")
-print("  Total brands: 51")
-print("  HTTP paths: 30+")
-print("  Protocols: 3")
 print("")
-print("  Coverage: ALL brands from requirement list")
