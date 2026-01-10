@@ -1,0 +1,488 @@
+================================================================================
+ISO/IEC 27002:2022 CPSS COMPLIANCE ASSESSMENT
+COMPREHENSIVE ANALYSIS REPORT
+================================================================================
+
+Generated: 2026-01-10 19:03:24
+Total Devices Assessed: 359
+
+================================================================================
+EXECUTIVE SUMMARY
+================================================================================
+
+Average Noncompliance: 40.6%
+Average Risk Score: 4.84/10
+Devices with KEV CVEs: 86 (24.0%)
+Devices with Scenario Impact: 345 (96.1%)
+
+Risk Level Distribution:
+  Low     :   14 devices (  3.9%)
+  Medium  :  295 devices ( 82.2%)
+  High    :   50 devices ( 13.9%)
+
+================================================================================
+ANALYSIS BY CPSS TYPE
+================================================================================
+
+EACS (40 devices):
+----------------------------------------------------------------------
+  Average Noncompliance: 31.1%
+  Average Risk Score: 4.12/10
+  KEV CVEs Present: 11 devices (27.5%)
+  Scenario Impact: 34 devices (85.0%)
+
+  Risk Level Distribution:
+    Low     :   6 ( 15.0%)
+    Medium  :  28 ( 70.0%)
+    High    :   6 ( 15.0%)
+
+  AGGREGATE RISK LEVEL: MEDIUM
+
+  Top Noncompliant Controls:
+    A.8.3 - Information access restriction          :  36 ( 90.0%)
+    A.8.26 - Application security requirements       :  36 ( 90.0%)
+    A.8.22 - Segregation of networks                 :  35 ( 87.5%)
+    A.8.5 - Secure authentication                   :  34 ( 85.0%)
+    A.8.24 - Use of cryptography                     :  31 ( 77.5%)
+
+
+VSS (226 devices):
+----------------------------------------------------------------------
+  Average Noncompliance: 40.7%
+  Average Risk Score: 4.80/10
+  KEV CVEs Present: 49 devices (21.7%)
+  Scenario Impact: 218 devices (96.5%)
+
+  Risk Level Distribution:
+    Low     :   8 (  3.5%)
+    Medium  : 195 ( 86.3%)
+    High    :  23 ( 10.2%)
+
+  AGGREGATE RISK LEVEL: MEDIUM
+
+  Top Noncompliant Controls:
+    A.8.2 - Privileged access rights                : 212 ( 93.8%)
+    A.8.3 - Information access restriction          : 191 ( 84.5%)
+    A.8.5 - Secure authentication                   : 179 ( 79.2%)
+    A.8.8 - Management of technical vulnerabilities : 177 ( 78.3%)
+    A.8.26 - Application security requirements       : 156 ( 69.0%)
+
+
+IHAS (93 devices):
+----------------------------------------------------------------------
+  Average Noncompliance: 44.5%
+  Average Risk Score: 5.23/10
+  KEV CVEs Present: 26 devices (28.0%)
+  Scenario Impact: 93 devices (100.0%)
+
+  Risk Level Distribution:
+    Low     :   0 (  0.0%)
+    Medium  :  72 ( 77.4%)
+    High    :  21 ( 22.6%)
+
+  AGGREGATE RISK LEVEL: MEDIUM
+
+  Top Noncompliant Controls:
+    A.8.21 - Security of network services            :  81 ( 87.1%)
+    A.5.23 - Information security for use of cloud services:  74 ( 79.6%)
+    A.8.3 - Information access restriction          :  70 ( 75.3%)
+    A.8.5 - Secure authentication                   :  69 ( 74.2%)
+    A.8.9 - Configuration management                :  69 ( 74.2%)
+
+
+================================================================================
+ANALYSIS BY RESILIENCE DOMAIN
+================================================================================
+
+ACCESS CONTROL DOMAIN
+----------------------------------------------------------------------
+Noncompliance Rate: 77.5% (835/1,077 assessments)
+
+INTERPRETATION:
+Domain Overview: Privileged access management prevents misuse of administrative credentials in CPSS. Weaknesses allow attackers to escalate privileges, manipulate system configurations, or disable security controls entirely.
+
+Controls and Findings:
+
+  A.8.2 - Privileged access rights
+  Noncompliance: 256/359 (71.3%)
+  Interpretation: Privileged access management prevents misuse of administrative credentials in CPSS. Weaknesses allow attackers to escalate privileges, manipulate system configurations, or disable security controls entirely.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+  A.8.3 - Information access restriction
+  Noncompliance: 297/359 (82.7%)
+  Interpretation: Information access restrictions protect sensitive CPSS data and configurations. Non-compliance exposes operational data, credentials, and system architecture to unauthorized parties.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+  A.8.5 - Secure authentication
+  Noncompliance: 282/359 (78.6%)
+  Interpretation: Secure authentication prevents unauthorized CPSS access through robust credential verification. Weak or default credentials represent the most common attack vector against deployed CPSS infrastructure.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+
+APPLICATION DOMAIN
+----------------------------------------------------------------------
+Noncompliance Rate: 71.9% (258/359 assessments)
+
+INTERPRETATION:
+Domain Overview: Application security ensures CPSS software is developed and deployed securely. Insecure applications introduce code-level vulnerabilities exploitable through multiple attack vectors.
+
+Controls and Findings:
+
+  A.8.26 - Application security requirements
+  Noncompliance: 258/359 (71.9%)
+  Interpretation: Application security ensures CPSS software is developed and deployed securely. Insecure applications introduce code-level vulnerabilities exploitable through multiple attack vectors.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+
+CLOUD DOMAIN
+----------------------------------------------------------------------
+Noncompliance Rate: 63.8% (229/359 assessments)
+
+INTERPRETATION:
+Domain Overview: Cloud security controls govern CPSS services deployed in cloud environments. Non-compliance creates shared responsibility gaps and data sovereignty issues.
+
+Controls and Findings:
+
+  A.5.23 - Information security for use of cloud services
+  Noncompliance: 229/359 (63.8%)
+  Interpretation: Cloud security controls govern CPSS services deployed in cloud environments. Non-compliance creates shared responsibility gaps and data sovereignty issues.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+
+CONFIGURATION DOMAIN
+----------------------------------------------------------------------
+Noncompliance Rate: 66.3% (238/359 assessments)
+
+INTERPRETATION:
+Domain Overview: Configuration management ensures CPSS devices maintain secure baseline settings. Insecure configurations create persistent vulnerabilities that attackers can exploit without requiring sophisticated techniques.
+
+Controls and Findings:
+
+  A.8.9 - Configuration management
+  Noncompliance: 238/359 (66.3%)
+  Interpretation: Configuration management ensures CPSS devices maintain secure baseline settings. Insecure configurations create persistent vulnerabilities that attackers can exploit without requiring sophisticated techniques.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+
+CRYPTOGRAPHY DOMAIN
+----------------------------------------------------------------------
+Noncompliance Rate: 29.8% (107/359 assessments)
+
+INTERPRETATION:
+Domain Overview: Cryptographic controls protect CPSS data confidentiality and integrity. Weak or absent encryption exposes sensitive operational data and enables undetected manipulation.
+
+Controls and Findings:
+
+  A.8.24 - Use of cryptography
+  Noncompliance: 107/359 (29.8%)
+  Interpretation: Cryptographic controls protect CPSS data confidentiality and integrity. Weak or absent encryption exposes sensitive operational data and enables undetected manipulation.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+
+NETWORK DOMAIN
+----------------------------------------------------------------------
+Noncompliance Rate: 37.6% (405/1,077 assessments)
+
+INTERPRETATION:
+Domain Overview: Network security controls protect CPSS communication channels from interception and manipulation. Inadequate network security enables man-in-the-middle attacks and unauthorized network access.
+
+Controls and Findings:
+
+  A.8.20 - Network security
+  Noncompliance: 91/359 (25.3%)
+  Interpretation: Network security controls protect CPSS communication channels from interception and manipulation. Inadequate network security enables man-in-the-middle attacks and unauthorized network access.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+  A.8.21 - Security of network services
+  Noncompliance: 183/359 (51.0%)
+  Interpretation: Network service security ensures CPSS services operate within defined security parameters. Non-compliance indicates services running without adequate protection or monitoring.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+  A.8.22 - Segregation of networks
+  Noncompliance: 131/359 (36.5%)
+  Interpretation: Network segregation isolates CPSS from general IT networks, limiting lateral movement in security breaches. Lack of segregation allows compromise of CPSS through adjacent systems.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+
+PATCH & LIFECYCLE DOMAIN
+----------------------------------------------------------------------
+Noncompliance Rate: 76.0% (273/359 assessments)
+
+INTERPRETATION:
+Domain Overview: Vulnerability management ensures CPSS software remains patched against known exploits. Unpatched systems are prime targets for automated attacks and ransomware deployment.
+
+Controls and Findings:
+
+  A.8.8 - Management of technical vulnerabilities
+  Noncompliance: 273/359 (76.0%)
+  Interpretation: Vulnerability management ensures CPSS software remains patched against known exploits. Unpatched systems are prime targets for automated attacks and ransomware deployment.
+  Sample Findings:
+    1. 
+    2. 
+    3. 
+
+
+================================================================================
+DETAILED CONTROL ANALYSIS
+================================================================================
+
+A.5.23 - Information security for use of cloud services
+----------------------------------------------------------------------
+Domain: Cloud
+Description: Processes for acquisition, use, management and exit
+
+COMPLIANCE SUMMARY:
+  Compliant: 130 devices (36.2%)
+  Noncompliant: 229 devices (63.8%)
+
+INTERPRETATION:
+Cloud security controls govern CPSS services deployed in cloud environments. Non-compliance creates shared responsibility gaps and data sovereignty issues.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  10/ 40 ( 25.0%)
+  VSS   : 145/226 ( 64.2%)
+  IHAS  :  74/ 93 ( 79.6%)
+
+
+A.8.2 - Privileged access rights
+----------------------------------------------------------------------
+Domain: Access Control
+Description: Allocation and use of privileged access rights
+
+COMPLIANCE SUMMARY:
+  Compliant: 103 devices (28.7%)
+  Noncompliant: 256 devices (71.3%)
+
+INTERPRETATION:
+Privileged access management prevents misuse of administrative credentials in CPSS. Weaknesses allow attackers to escalate privileges, manipulate system configurations, or disable security controls entirely.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  21/ 40 ( 52.5%) [SCENARIO CONTROL]
+  VSS   : 212/226 ( 93.8%)
+  IHAS  :  23/ 93 ( 24.7%)
+
+
+A.8.20 - Network security
+----------------------------------------------------------------------
+Domain: Network
+Description: Security of networks and network services
+
+COMPLIANCE SUMMARY:
+  Compliant: 268 devices (74.7%)
+  Noncompliant: 91 devices (25.3%)
+
+INTERPRETATION:
+Network security controls protect CPSS communication channels from interception and manipulation. Inadequate network security enables man-in-the-middle attacks and unauthorized network access.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  13/ 40 ( 32.5%) [SCENARIO CONTROL]
+  VSS   :  64/226 ( 28.3%)
+  IHAS  :  14/ 93 ( 15.1%) [SCENARIO CONTROL]
+
+
+A.8.21 - Security of network services
+----------------------------------------------------------------------
+Domain: Network
+Description: Security mechanisms, service levels, requirements
+
+COMPLIANCE SUMMARY:
+  Compliant: 176 devices (49.0%)
+  Noncompliant: 183 devices (51.0%)
+
+INTERPRETATION:
+Network service security ensures CPSS services operate within defined security parameters. Non-compliance indicates services running without adequate protection or monitoring.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  30/ 40 ( 75.0%)
+  VSS   :  72/226 ( 31.9%) [SCENARIO CONTROL]
+  IHAS  :  81/ 93 ( 87.1%) [SCENARIO CONTROL]
+
+
+A.8.22 - Segregation of networks
+----------------------------------------------------------------------
+Domain: Network
+Description: Groups of information services, users and systems
+
+COMPLIANCE SUMMARY:
+  Compliant: 228 devices (63.5%)
+  Noncompliant: 131 devices (36.5%)
+
+INTERPRETATION:
+Network segregation isolates CPSS from general IT networks, limiting lateral movement in security breaches. Lack of segregation allows compromise of CPSS through adjacent systems.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  35/ 40 ( 87.5%) [SCENARIO CONTROL]
+  VSS   :  75/226 ( 33.2%)
+  IHAS  :  21/ 93 ( 22.6%) [SCENARIO CONTROL]
+
+
+A.8.24 - Use of cryptography
+----------------------------------------------------------------------
+Domain: Cryptography
+Description: Rules for effective use of cryptography
+
+COMPLIANCE SUMMARY:
+  Compliant: 252 devices (70.2%)
+  Noncompliant: 107 devices (29.8%)
+
+INTERPRETATION:
+Cryptographic controls protect CPSS data confidentiality and integrity. Weak or absent encryption exposes sensitive operational data and enables undetected manipulation.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  31/ 40 ( 77.5%)
+  VSS   :  62/226 ( 27.4%) [SCENARIO CONTROL]
+  IHAS  :  14/ 93 ( 15.1%) [SCENARIO CONTROL]
+
+
+A.8.26 - Application security requirements
+----------------------------------------------------------------------
+Domain: Application
+Description: Information security requirements for applications
+
+COMPLIANCE SUMMARY:
+  Compliant: 101 devices (28.1%)
+  Noncompliant: 258 devices (71.9%)
+
+INTERPRETATION:
+Application security ensures CPSS software is developed and deployed securely. Insecure applications introduce code-level vulnerabilities exploitable through multiple attack vectors.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  36/ 40 ( 90.0%)
+  VSS   : 156/226 ( 69.0%)
+  IHAS  :  66/ 93 ( 71.0%)
+
+
+A.8.3 - Information access restriction
+----------------------------------------------------------------------
+Domain: Access Control
+Description: Access to information and other associated assets
+
+COMPLIANCE SUMMARY:
+  Compliant: 62 devices (17.3%)
+  Noncompliant: 297 devices (82.7%)
+
+INTERPRETATION:
+Information access restrictions protect sensitive CPSS data and configurations. Non-compliance exposes operational data, credentials, and system architecture to unauthorized parties.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  36/ 40 ( 90.0%)
+  VSS   : 191/226 ( 84.5%)
+  IHAS  :  70/ 93 ( 75.3%)
+
+
+A.8.5 - Secure authentication
+----------------------------------------------------------------------
+Domain: Access Control
+Description: Secure authentication technologies and procedures
+
+COMPLIANCE SUMMARY:
+  Compliant: 77 devices (21.4%)
+  Noncompliant: 282 devices (78.6%)
+
+INTERPRETATION:
+Secure authentication prevents unauthorized CPSS access through robust credential verification. Weak or default credentials represent the most common attack vector against deployed CPSS infrastructure.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  34/ 40 ( 85.0%) [SCENARIO CONTROL]
+  VSS   : 179/226 ( 79.2%) [SCENARIO CONTROL]
+  IHAS  :  69/ 93 ( 74.2%) [SCENARIO CONTROL]
+
+
+A.8.8 - Management of technical vulnerabilities
+----------------------------------------------------------------------
+Domain: Patch & Lifecycle
+Description: Information about technical vulnerabilities
+
+COMPLIANCE SUMMARY:
+  Compliant: 86 devices (24.0%)
+  Noncompliant: 273 devices (76.0%)
+
+INTERPRETATION:
+Vulnerability management ensures CPSS software remains patched against known exploits. Unpatched systems are prime targets for automated attacks and ransomware deployment.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  29/ 40 ( 72.5%)
+  VSS   : 177/226 ( 78.3%) [SCENARIO CONTROL]
+  IHAS  :  67/ 93 ( 72.0%) [SCENARIO CONTROL]
+
+
+A.8.9 - Configuration management
+----------------------------------------------------------------------
+Domain: Configuration
+Description: Configurations including security configurations
+
+COMPLIANCE SUMMARY:
+  Compliant: 121 devices (33.7%)
+  Noncompliant: 238 devices (66.3%)
+
+INTERPRETATION:
+Configuration management ensures CPSS devices maintain secure baseline settings. Insecure configurations create persistent vulnerabilities that attackers can exploit without requiring sophisticated techniques.
+
+NONCOMPLIANCE BY CPSS TYPE:
+  EACS  :  28/ 40 ( 70.0%) [SCENARIO CONTROL]
+  VSS   : 141/226 ( 62.4%) [SCENARIO CONTROL]
+  IHAS  :  69/ 93 ( 74.2%)
+
+
+================================================================================
+RISK SCORING METHODOLOGY
+================================================================================
+
+The risk scoring model comprises three components:
+
+1. BASE INDICATOR - ISO 27002:2022 Compliance:
+   - Measures scan-observable noncompliance per control
+   - Aggregated by resilience domain and CPSS category
+   - Score contribution: 0-6 points (60% of total)
+
+2. LIKELIHOOD INDICATOR - KEV CVE Presence:
+   - Flags CPSS records with CVEs in CISA KEV catalog
+   - Indicates actively exploited vulnerabilities
+   - Score contribution: +2 points if present
+
+3. IMPACT INDICATOR - Risk Scenario Mapping:
+   - Maps noncompliance to CPSS-specific risk scenarios
+   - EACS scenarios: A.8.2, A.8.5, A.8.9, A.8.22, A.8.20
+   - VSS scenarios: A.8.24, A.8.21, A.8.8, A.8.5, A.8.9
+   - IHAS scenarios: A.8.5, A.8.8, A.8.16, A.8.22, A.8.20, A.8.24, A.8.21
+   - Score contribution: +2 points if in scenario
+
+RISK LEVEL DETERMINATION:
+  - Low: <20% noncompliance, no KEV CVEs
+  - Medium: 20-50% noncompliance OR isolated KEV CVEs
+  - High: >50% noncompliance + KEV CVEs + scenario relevance
+
+================================================================================
+================================================================================
+END OF REPORT
+================================================================================

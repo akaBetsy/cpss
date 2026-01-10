@@ -1,0 +1,59 @@
+
+ENHANCED CPSS IDENTIFICATION SUMMARY REPORT
+======================================================================
+Generated: 2026-01-05 11:27:29
+
+DATASET OVERVIEW
+----------------------------------------------------------------------
+Total services analyzed:               271,255
+
+CPSS IDENTIFICATION RESULTS
+----------------------------------------------------------------------
+EACS (Access Control):                      40 (  0.01%)
+  └─ BAS subcategory:                       38 ( 95.00% of EACS)
+  └─ Average confidence:                  98.5%
+
+VSS (Video Surveillance):                  226 (  0.08%)
+  └─ Average confidence:                  97.1%
+
+IHAS (Intrusion & Alarm):                  93 (  0.03%)
+  └─ Average confidence:                  85.3%
+
+Total CPSS devices:                        358 (  0.13%)
+Multi-function devices:                      1
+Non-CPSS services:                     270,897 ( 99.87%)
+
+ENHANCEMENT FEATURES APPLIED
+----------------------------------------------------------------------
+ Protocol detection (RTSP, ONVIF, BACnet, SIA DC-09, Contact ID)
+ HTTP path pattern matching
+ Model number detection
+ Confidence scoring system (0-100%)
+ Multi-function device handling
+ BAS subcategory flagging
+ Enhanced cloud provider exclusions
+
+TOP DETECTION METHODS
+----------------------------------------------------------------------
+EACS:  Brand                               2
+VSS:   Protocol                           39
+IHAS: Brand                              17
+
+FILES GENERATED
+----------------------------------------------------------------------
+cpss_eacs_services_enhanced.csv             40 services
+cpss_vss_services_enhanced.csv             226 services
+cpss_ihas_services_enhanced.csv             93 services
+cpss_all_services_enhanced.csv             358 services
+cpss_multi_function_devices.csv              1 services
+cpss_identification_enhanced_summary.jpg
+
+NEXT STEPS
+----------------------------------------------------------------------
+1. Validate CSV exports
+2. Review high-confidence matches (≥90%)
+3. Investigate multi-function devices
+4. Proceed to ISO controls assessment (analyses_3)
+
+======================================================================
+End of Report
