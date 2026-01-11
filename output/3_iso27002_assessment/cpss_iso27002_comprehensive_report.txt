@@ -3,7 +3,7 @@ ISO/IEC 27002:2022 CPSS COMPLIANCE ASSESSMENT
 COMPREHENSIVE ANALYSIS REPORT
 ================================================================================
 
-Generated: 2026-01-10 19:03:24
+Generated: 2026-01-11 13:11:06
 Total Devices Assessed: 359
 
 ================================================================================
@@ -39,11 +39,11 @@ EACS (40 devices):
   AGGREGATE RISK LEVEL: MEDIUM
 
   Top Noncompliant Controls:
-    A.8.3 - Information access restriction          :  36 ( 90.0%)
-    A.8.26 - Application security requirements       :  36 ( 90.0%)
-    A.8.22 - Segregation of networks                 :  35 ( 87.5%)
-    A.8.5 - Secure authentication                   :  34 ( 85.0%)
-    A.8.24 - Use of cryptography                     :  31 ( 77.5%)
+    A.5.23 - Information security for use of cloud services:  30 ( 75.0%)
+    A.8.20 - Network security                        :  27 ( 67.5%)
+    A.8.2 - Privileged access rights                :  19 ( 47.5%)
+    A.8.9 - Configuration management                :  12 ( 30.0%)
+    A.8.8 - Management of technical vulnerabilities :  11 ( 27.5%)
 
 
 VSS (226 devices):
@@ -61,11 +61,11 @@ VSS (226 devices):
   AGGREGATE RISK LEVEL: MEDIUM
 
   Top Noncompliant Controls:
-    A.8.2 - Privileged access rights                : 212 ( 93.8%)
-    A.8.3 - Information access restriction          : 191 ( 84.5%)
-    A.8.5 - Secure authentication                   : 179 ( 79.2%)
-    A.8.8 - Management of technical vulnerabilities : 177 ( 78.3%)
-    A.8.26 - Application security requirements       : 156 ( 69.0%)
+    A.8.24 - Use of cryptography                     : 164 ( 72.6%)
+    A.8.20 - Network security                        : 162 ( 71.7%)
+    A.8.21 - Security of network services            : 154 ( 68.1%)
+    A.8.22 - Segregation of networks                 : 151 ( 66.8%)
+    A.8.9 - Configuration management                :  85 ( 37.6%)
 
 
 IHAS (93 devices):
@@ -83,11 +83,11 @@ IHAS (93 devices):
   AGGREGATE RISK LEVEL: MEDIUM
 
   Top Noncompliant Controls:
-    A.8.21 - Security of network services            :  81 ( 87.1%)
-    A.5.23 - Information security for use of cloud services:  74 ( 79.6%)
-    A.8.3 - Information access restriction          :  70 ( 75.3%)
-    A.8.5 - Secure authentication                   :  69 ( 74.2%)
-    A.8.9 - Configuration management                :  69 ( 74.2%)
+    A.8.20 - Network security                        :  79 ( 84.9%)
+    A.8.24 - Use of cryptography                     :  79 ( 84.9%)
+    A.8.22 - Segregation of networks                 :  72 ( 77.4%)
+    A.8.2 - Privileged access rights                :  70 ( 75.3%)
+    A.8.26 - Application security requirements       :  27 ( 29.0%)
 
 
 ================================================================================
