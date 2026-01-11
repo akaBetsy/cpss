@@ -921,6 +921,7 @@ def detect_industrial_protocols(row):
 def identify_eacs_enhanced(row):
     """
     Comprehensive EACS identification with all 51 brands
+    Now accumulates ALL matching indicators for complete audit trail
     """
 
     result = {
@@ -934,6 +935,10 @@ def identify_eacs_enhanced(row):
         'match_pattern': None,
         'match_value': None,
     }
+
+    # NEW: List to accumulate all matching indicators
+    reasons = []
+    match_details = []
 
     # Extract fields safely
     def safe_str(field):
@@ -972,26 +977,28 @@ def identify_eacs_enhanced(row):
         fields['tags']
     ])
 
-    # STEP 1: EXCLUSIONS
+    # STEP 1: EXCLUSIONS (still returns early)
     for category, patterns in EACS_ENHANCED_CONFIG['exclusions'].items():
         for pattern in patterns:
             if re.search(pattern, all_text, re.IGNORECASE):
-                result['eacs_reason'] = f"EXCLUDED: {category}"
+                result['eacs_reason'] = f"EXCLUDED:{category}"
                 return result
+
+    # Track highest confidence and primary brand
+    max_confidence = 0
+    primary_brand = None
+    primary_product = None
 
     # STEP 2: TAG DETECTION
     for tag in EACS_ENHANCED_CONFIG['tags']:
         if tag.lower() in fields['tags']:
             result['is_eacs'] = True
-            result['eacs_confidence'] = 70
-            result['eacs_reason'] = f"Tag: {tag}"
-            result['match_field'] = 'service.fingerprints.tags'
-            result['match_value'] = tag
+            reasons.append(f"tag:{tag}")
+            max_confidence = max(max_confidence, 70)
             if 'building automation' in tag.lower():
                 result['is_bas'] = True
-            # Continue to look for brand
 
-    # STEP 3: HTTP PATH DETECTION (in path field OR body)
+    # STEP 3: HTTP PATH DETECTION
     for brand, paths in EACS_ENHANCED_CONFIG['http_paths'].items():
         for path in paths:
             found_in_path = fields['http_path'] and path in fields['http_path']
@@ -1006,13 +1013,15 @@ def identify_eacs_enhanced(row):
 
             if (found_in_path or found_in_body) and brand.lower() in all_text:
                 result['is_eacs'] = True
-                result['eacs_confidence'] = 90 if found_in_path else 85
-                result['detected_brand'] = brand
-                result['eacs_reason'] = f"HTTP path: {path} + brand: {brand}"
-                result['match_field'] = 'http_path' if found_in_path else 'body'
-                result['match_pattern'] = path
-                result['match_value'] = fields['http_path'] if found_in_path else f"Found in body: {path}"
-                return result
+                path_confidence = 90 if found_in_path else 85
+                reasons.append(f"http_path:{path}")
+                reasons.append(f"brand:{brand}")
+                
+                if path_confidence > max_confidence:
+                    max_confidence = path_confidence
+                    primary_brand = brand
+                    result['match_field'] = 'http_path' if found_in_path else 'body'
+                    result['match_pattern'] = path
 
     # STEP 4: PROTOCOL DETECTION
     port = row.get('service.port', 0)
@@ -1022,14 +1031,17 @@ def identify_eacs_enhanced(row):
                 match = re.search(pattern, all_text, re.IGNORECASE)
                 if match:
                     result['is_eacs'] = True
-                    result['eacs_confidence'] = proto_config['confidence']
-                    result['eacs_reason'] = f"Protocol: {proto_name} (port {port})"
-                    result['match_field'] = 'service.banner + port'
-                    result['match_pattern'] = pattern
-                    result['match_value'] = f"Port {port}, Banner: {match.group()}"
+                    reasons.append(f"protocol:{proto_name}")
+                    reasons.append(f"port:{port}")
+                    proto_confidence = proto_config['confidence']
+                    
+                    if proto_confidence > max_confidence:
+                        max_confidence = proto_confidence
+                        result['match_field'] = 'service.banner+port'
+                        result['match_pattern'] = pattern
+                    
                     if proto_config.get('context') == 'BAS':
                         result['is_bas'] = True
-                    return result
 
     # STEP 5: BRAND + PRODUCT DETECTION
     for brand, brand_config in EACS_ENHANCED_CONFIG['brands'].items():
@@ -1052,6 +1064,9 @@ def identify_eacs_enhanced(row):
         if not brand_found:
             continue
 
+        # Add brand to reasons
+        reasons.append(f"brand:{brand}")
+        
         # Check if product required
         if brand_config.get('require_product', False):
             product_found = False
@@ -1069,45 +1084,35 @@ def identify_eacs_enhanced(row):
                 if product_found:
                     break
 
-            if not product_found:
-                continue
+            if product_found:
+                result['is_eacs'] = True
+                reasons.append(f"product:{product_match}")
+                brand_confidence = brand_config['confidence']
+                
+                if brand_confidence > max_confidence:
+                    max_confidence = brand_confidence
+                    primary_brand = brand
+                    primary_product = product_match
+                    result['match_field'] = f"{brand_field}+{product_field}"
 
-            # Success!
-            result['is_eacs'] = True
-            result['detected_brand'] = brand
-            result['detected_product'] = product_match
-            result['eacs_confidence'] = brand_config['confidence']
-            result['eacs_reason'] = f"Brand: {brand_match} + Product: {product_match}"
-            result['match_field'] = f"{brand_field} + {product_field}"
-            result['match_value'] = f"{brand_match}, {product_match}"
-
-            if brand_config.get('is_bas', False):
-                result['is_bas'] = True
-
-            return result
+                if brand_config.get('is_bas', False):
+                    result['is_bas'] = True
         else:
             # Brand alone is sufficient
             result['is_eacs'] = True
-            result['detected_brand'] = brand
-            result['eacs_confidence'] = brand_config['confidence']
-            result['eacs_reason'] = f"Brand: {brand_match}"
-            result['match_field'] = brand_field
-            result['match_value'] = brand_match
+            brand_confidence = brand_config['confidence']
+            
+            if brand_confidence > max_confidence:
+                max_confidence = brand_confidence
+                primary_brand = brand
+                result['match_field'] = brand_field
 
             if brand_config.get('is_bas', False):
                 result['is_bas'] = True
-
-            return result
 
     # ========================================
     # INDUSTRIAL/BAS PROTOCOL DETECTION
     # ========================================
-    # This runs ONLY if no brand was detected above
-
-    detected_brand = result.get('detected_brand')
-    base_confidence = result.get('eacs_confidence', 0)
-
-    # Track detection methods for confidence bonus
     detection_methods = []
     if result['is_eacs']:
         detection_methods.append('brand_match')
@@ -1117,8 +1122,10 @@ def identify_eacs_enhanced(row):
 
     if industrial_protocols:
         detection_methods.append('industrial_protocol')
-        # If higher confidence from protocol, use it
-        base_confidence = max(base_confidence, industrial_conf)
+        for proto in industrial_protocols:
+            reasons.append(f"industrial_protocol:{proto}")
+        
+        max_confidence = max(max_confidence, industrial_conf)
         result['is_eacs'] = True
         result['protocols_detected'] = industrial_protocols
 
@@ -1128,14 +1135,18 @@ def identify_eacs_enhanced(row):
             detection_methods.append('BAS_protocol')
 
     # ========================================
-    # ENHANCED CONFIDENCE CALCULATION
+    # FINALIZE RESULTS
     # ========================================
-
-    if result['is_eacs']:  # Only calculate if something was detected
+    if result['is_eacs']:
+        # Set primary brand and product
+        result['detected_brand'] = primary_brand
+        result['detected_product'] = primary_product
+        
+        # Enhanced confidence calculation
         final_confidence, confidence_bonuses = calculate_enhanced_confidence(
             row=row,
-            base_confidence=base_confidence,
-            brand=detected_brand,
+            base_confidence=max_confidence,
+            brand=primary_brand,
             category='EACS',
             detection_methods=detection_methods
         )
@@ -1143,6 +1154,15 @@ def identify_eacs_enhanced(row):
         result['eacs_confidence'] = final_confidence
         result['confidence_bonuses'] = confidence_bonuses
         result['detection_methods'] = detection_methods
+        
+        # Combine all reasons into pipe-separated string
+        # Remove duplicates while preserving order
+        unique_reasons = []
+        for r in reasons:
+            if r not in unique_reasons:
+                unique_reasons.append(r)
+        
+        result['eacs_reason'] = '|'.join(unique_reasons) if unique_reasons else None
 
     return result
 

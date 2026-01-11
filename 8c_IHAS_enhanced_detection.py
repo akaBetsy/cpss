@@ -754,6 +754,7 @@ def detect_ihas_protocols_enhanced(row):
 def identify_ihas_enhanced(row):
     """
     Comprehensive I&HAS identification with all 27 brands
+    Now accumulates ALL matching indicators for complete audit trail
     """
 
     result = {
@@ -766,6 +767,9 @@ def identify_ihas_enhanced(row):
         'match_pattern': None,
         'match_value': None,
     }
+
+    # NEW: List to accumulate all matching indicators
+    reasons = []
 
     def safe_str(field):
         val = row.get(field, '')
@@ -803,12 +807,17 @@ def identify_ihas_enhanced(row):
         fields['tags']
     ])
 
-    # STEP 1: EXCLUSIONS
+    # STEP 1: EXCLUSIONS (still returns early)
     for category, patterns in IHAS_ENHANCED_CONFIG['exclusions'].items():
         for pattern in patterns:
             if re.search(pattern, all_text, re.IGNORECASE):
-                result['ihas_reason'] = f"EXCLUDED: {category}"
+                result['ihas_reason'] = f"EXCLUDED:{category}"
                 return result
+
+    # Track highest confidence and primary brand
+    max_confidence = 0
+    primary_brand = None
+    primary_product = None
 
     # STEP 2: HTTP PATH DETECTION
     if fields['http_path']:
@@ -826,13 +835,15 @@ def identify_ihas_enhanced(row):
 
                 if (found_in_path or found_in_body) and brand.lower() in all_text:
                     result['is_ihas'] = True
-                    result['ihas_confidence'] = 90 if found_in_path else 85
-                    result['detected_brand'] = brand
-                    result['ihas_reason'] = f"HTTP path: {path} + brand: {brand}"
-                    result['match_field'] = 'http_path' if found_in_path else 'body'
-                    result['match_pattern'] = path
-                    result['match_value'] = fields['http_path'] if found_in_path else f"Found in body: {path}"
-                    return result
+                    path_confidence = 90 if found_in_path else 85
+                    reasons.append(f"http_path:{path}")
+                    reasons.append(f"brand:{brand}")
+                    
+                    if path_confidence > max_confidence:
+                        max_confidence = path_confidence
+                        primary_brand = brand
+                        result['match_field'] = 'http_path' if found_in_path else 'body'
+                        result['match_pattern'] = path
 
     # STEP 3: PROTOCOL DETECTION
     port = row.get('service.port', 0)
@@ -842,12 +853,14 @@ def identify_ihas_enhanced(row):
                 match = re.search(pattern, all_text, re.IGNORECASE)
                 if match:
                     result['is_ihas'] = True
-                    result['ihas_confidence'] = proto_config['confidence']
-                    result['ihas_reason'] = f"Protocol: {proto_name} (port {port})"
-                    result['match_field'] = 'service.banner + port'
-                    result['match_pattern'] = pattern
-                    result['match_value'] = f"Port {port}, {match.group()}"
-                    return result
+                    reasons.append(f"protocol:{proto_name}")
+                    reasons.append(f"port:{port}")
+                    proto_confidence = proto_config['confidence']
+                    
+                    if proto_confidence > max_confidence:
+                        max_confidence = proto_confidence
+                        result['match_field'] = 'service.banner+port'
+                        result['match_pattern'] = pattern
 
     # STEP 4: BRAND + PRODUCT DETECTION
     for brand, brand_config in IHAS_ENHANCED_CONFIG['brands'].items():
@@ -869,6 +882,9 @@ def identify_ihas_enhanced(row):
         if not brand_found:
             continue
 
+        # Add brand to reasons
+        reasons.append(f"brand:{brand}")
+
         if brand_config.get('require_product', False):
             product_found = False
             product_match = None
@@ -885,35 +901,28 @@ def identify_ihas_enhanced(row):
                 if product_found:
                     break
 
-            if not product_found:
-                continue
-
-            result['is_ihas'] = True
-            result['detected_brand'] = brand
-            result['detected_product'] = product_match
-            result['ihas_confidence'] = brand_config['confidence']
-            result['ihas_reason'] = f"Brand: {brand_match} + Product: {product_match}"
-            result['match_field'] = f"{brand_field} + {product_field}"
-            result['match_value'] = f"{brand_match}, {product_match}"
-            return result
+            if product_found:
+                result['is_ihas'] = True
+                reasons.append(f"product:{product_match}")
+                brand_confidence = brand_config['confidence']
+                
+                if brand_confidence > max_confidence:
+                    max_confidence = brand_confidence
+                    primary_brand = brand
+                    primary_product = product_match
+                    result['match_field'] = f"{brand_field}+{product_field}"
         else:
             result['is_ihas'] = True
-            result['detected_brand'] = brand
-            result['ihas_confidence'] = brand_config['confidence']
-            result['ihas_reason'] = f"Brand: {brand_match}"
-            result['match_field'] = brand_field
-            result['match_value'] = brand_match
-            return result
+            brand_confidence = brand_config['confidence']
+            
+            if brand_confidence > max_confidence:
+                max_confidence = brand_confidence
+                primary_brand = brand
+                result['match_field'] = brand_field
 
     # ========================================
     # IoT/ALARM PROTOCOL DETECTION
     # ========================================
-    # This runs ONLY if no brand was detected above
-
-    detected_brand = result.get('detected_brand')
-    base_confidence = result.get('ihas_confidence', 0)
-
-    # Track detection methods for confidence bonus
     detection_methods = []
     if result['is_ihas']:
         detection_methods.append('brand_match')
@@ -924,20 +933,26 @@ def identify_ihas_enhanced(row):
 
     if all_protocols:
         detection_methods.append('protocol')
-        # If higher confidence from protocol, use it
-        base_confidence = max(base_confidence, protocol_conf)
+        for proto in all_protocols:
+            reasons.append(f"ihas_protocol:{proto}")
+        
+        max_confidence = max(max_confidence, protocol_conf)
         result['is_ihas'] = True
         result['protocols_detected'] = all_protocols
 
     # ========================================
-    # ENHANCED CONFIDENCE CALCULATION
+    # FINALIZE RESULTS
     # ========================================
-
-    if result['is_ihas']:  # Only calculate if something was detected
+    if result['is_ihas']:
+        # Set primary brand and product
+        result['detected_brand'] = primary_brand
+        result['detected_product'] = primary_product
+        
+        # Enhanced confidence calculation
         final_confidence, confidence_bonuses = calculate_enhanced_confidence(
             row=row,
-            base_confidence=base_confidence,
-            brand=detected_brand,
+            base_confidence=max_confidence,
+            brand=primary_brand,
             category='IHAS',
             detection_methods=detection_methods
         )
@@ -945,6 +960,15 @@ def identify_ihas_enhanced(row):
         result['ihas_confidence'] = final_confidence
         result['confidence_bonuses'] = confidence_bonuses
         result['detection_methods'] = detection_methods
+        
+        # Combine all reasons into pipe-separated string
+        # Remove duplicates while preserving order
+        unique_reasons = []
+        for r in reasons:
+            if r not in unique_reasons:
+                unique_reasons.append(r)
+        
+        result['ihas_reason'] = '|'.join(unique_reasons) if unique_reasons else None
 
     return result
 

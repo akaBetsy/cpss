@@ -990,6 +990,7 @@ def detect_vss_protocols_enhanced(row):
 def identify_vss_enhanced(row):
     """
     Comprehensive VSS identification with all 50 brands
+    Now accumulates ALL matching indicators for complete audit trail
     """
 
     result = {
@@ -1002,6 +1003,9 @@ def identify_vss_enhanced(row):
         'match_pattern': None,
         'match_value': None,
     }
+
+    # NEW: List to accumulate all matching indicators
+    reasons = []
 
     def safe_str(field):
         val = row.get(field, '')
@@ -1039,12 +1043,17 @@ def identify_vss_enhanced(row):
         fields['tags']
     ])
 
-    # STEP 1: EXCLUSIONS
+    # STEP 1: EXCLUSIONS (still returns early)
     for category, patterns in VSS_ENHANCED_CONFIG['exclusions'].items():
         for pattern in patterns:
             if re.search(pattern, all_text, re.IGNORECASE):
-                result['vss_reason'] = f"EXCLUDED: {category}"
+                result['vss_reason'] = f"EXCLUDED:{category}"
                 return result
+
+    # Track highest confidence and primary brand
+    max_confidence = 0
+    primary_brand = None
+    primary_product = None
 
     # STEP 2: PROTOCOL DETECTION
     port = row.get('service.port', 0)
@@ -1058,12 +1067,15 @@ def identify_vss_enhanced(row):
                 match = re.search(pattern, all_text, re.IGNORECASE)
                 if match:
                     result['is_vss'] = True
-                    result['vss_confidence'] = proto_config['confidence']
-                    result['vss_reason'] = f"Protocol: {proto_name}"
-                    result['match_field'] = 'protocol'
-                    result['match_pattern'] = pattern
-                    result['match_value'] = f"Port {port}, {match.group()}"
-                    return result
+                    reasons.append(f"protocol:{proto_name}")
+                    if port:
+                        reasons.append(f"port:{port}")
+                    proto_confidence = proto_config['confidence']
+                    
+                    if proto_confidence > max_confidence:
+                        max_confidence = proto_confidence
+                        result['match_field'] = 'protocol'
+                        result['match_pattern'] = pattern
 
     # STEP 3: HTTP PATH DETECTION
     if fields['http_path']:
@@ -1081,13 +1093,15 @@ def identify_vss_enhanced(row):
 
                 if (found_in_path or found_in_body) and brand.lower() in all_text:
                     result['is_vss'] = True
-                    result['vss_confidence'] = 90 if found_in_path else 85
-                    result['detected_brand'] = brand
-                    result['vss_reason'] = f"HTTP path: {path} + brand: {brand}"
-                    result['match_field'] = 'http_path' if found_in_path else 'body'
-                    result['match_pattern'] = path
-                    result['match_value'] = fields['http_path'] if found_in_path else f"Found in body: {path}"
-                    return result
+                    path_confidence = 90 if found_in_path else 85
+                    reasons.append(f"http_path:{path}")
+                    reasons.append(f"brand:{brand}")
+                    
+                    if path_confidence > max_confidence:
+                        max_confidence = path_confidence
+                        primary_brand = brand
+                        result['match_field'] = 'http_path' if found_in_path else 'body'
+                        result['match_pattern'] = path
 
     # STEP 4: BRAND + PRODUCT DETECTION
     for brand, brand_config in VSS_ENHANCED_CONFIG['brands'].items():
@@ -1109,6 +1123,9 @@ def identify_vss_enhanced(row):
         if not brand_found:
             continue
 
+        # Add brand to reasons
+        reasons.append(f"brand:{brand}")
+
         if brand_config.get('require_product', False):
             product_found = False
             product_match = None
@@ -1125,35 +1142,28 @@ def identify_vss_enhanced(row):
                 if product_found:
                     break
 
-            if not product_found:
-                continue
-
-            result['is_vss'] = True
-            result['detected_brand'] = brand
-            result['detected_product'] = product_match
-            result['vss_confidence'] = brand_config['confidence']
-            result['vss_reason'] = f"Brand: {brand_match} + Product: {product_match}"
-            result['match_field'] = f"{brand_field} + {product_field}"
-            result['match_value'] = f"{brand_match}, {product_match}"
-            return result
+            if product_found:
+                result['is_vss'] = True
+                reasons.append(f"product:{product_match}")
+                brand_confidence = brand_config['confidence']
+                
+                if brand_confidence > max_confidence:
+                    max_confidence = brand_confidence
+                    primary_brand = brand
+                    primary_product = product_match
+                    result['match_field'] = f"{brand_field}+{product_field}"
         else:
             result['is_vss'] = True
-            result['detected_brand'] = brand
-            result['vss_confidence'] = brand_config['confidence']
-            result['vss_reason'] = f"Brand: {brand_match}"
-            result['match_field'] = brand_field
-            result['match_value'] = brand_match
-            return result
+            brand_confidence = brand_config['confidence']
+            
+            if brand_confidence > max_confidence:
+                max_confidence = brand_confidence
+                primary_brand = brand
+                result['match_field'] = brand_field
 
     # ========================================
     # VSS PROTOCOL DETECTION
     # ========================================
-    # This runs ONLY if no brand was detected above
-
-    detected_brand = result.get('detected_brand')
-    base_confidence = result.get('vss_confidence', 0)
-
-    # Track detection methods for confidence bonus
     detection_methods = []
     if result['is_vss']:
         detection_methods.append('brand_match')
@@ -1163,20 +1173,26 @@ def identify_vss_enhanced(row):
 
     if protocols:
         detection_methods.append('protocol')
-        # If higher confidence from protocol, use it
-        base_confidence = max(base_confidence, protocol_conf)
+        for proto in protocols:
+            reasons.append(f"vss_protocol:{proto}")
+        
+        max_confidence = max(max_confidence, protocol_conf)
         result['is_vss'] = True
         result['protocols_detected'] = protocols
 
     # ========================================
-    # ENHANCED CONFIDENCE CALCULATION
+    # FINALIZE RESULTS
     # ========================================
-
-    if result['is_vss']:  # Only calculate if something was detected
+    if result['is_vss']:
+        # Set primary brand and product
+        result['detected_brand'] = primary_brand
+        result['detected_product'] = primary_product
+        
+        # Enhanced confidence calculation
         final_confidence, confidence_bonuses = calculate_enhanced_confidence(
             row=row,
-            base_confidence=base_confidence,
-            brand=detected_brand,
+            base_confidence=max_confidence,
+            brand=primary_brand,
             category='VSS',
             detection_methods=detection_methods
         )
@@ -1184,6 +1200,15 @@ def identify_vss_enhanced(row):
         result['vss_confidence'] = final_confidence
         result['confidence_bonuses'] = confidence_bonuses
         result['detection_methods'] = detection_methods
+        
+        # Combine all reasons into pipe-separated string
+        # Remove duplicates while preserving order
+        unique_reasons = []
+        for r in reasons:
+            if r not in unique_reasons:
+                unique_reasons.append(r)
+        
+        result['vss_reason'] = '|'.join(unique_reasons) if unique_reasons else None
 
     return result
 
